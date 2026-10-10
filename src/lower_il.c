@@ -10291,7 +10291,7 @@ not include the function scope memory region, if any.
 */
 {
   if (!visited_yet(routine)) {
-    check_assertion(!ignore_routine_in_back_end(routine));
+    if (ignore_routine_in_back_end(routine)) return;
     mark_as_visited(routine);
     lower_source_correspondence(&routine->source_corresp);
 #if LOWER_VARIABLE_LENGTH_ARRAYS
