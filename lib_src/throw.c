@@ -148,6 +148,18 @@ typedef struct a_throw_stack_entry {
 			/* An EH stack entry for the throw marker to be
 			   linked into the EH stack while a given throw
 			   is active. */
+  a_byte_boolean
+		detached;
+			/* TRUE for an entry made by __eh_make_detached:
+			   a primary entry that is not on the throw stack,
+			   allocated with malloc, whose object lives in
+			   memory owned by the creator (std::exception_ptr
+			   support).  Such an entry is only referenced
+			   through use_count. */
+  void		(*detached_free)(void*);
+			/* For a detached entry: called with object_address
+			   when the object has been destroyed and the last
+			   reference is gone. */
 } a_throw_stack_entry;
 
 
@@ -1140,39 +1152,16 @@ is returned via nullptr_conv_needed (if it is not NULL).
 }  /* check_exception_type_specifications */
 
 
-static void destroy_thrown_object(a_throw_stack_entry_ptr	tsep)
+static void release_detached_entry(a_throw_stack_entry_ptr	tsep);
+
+static void destroy_primary_if_unused(a_throw_stack_entry_ptr primary_tsep)
 /*
-Call the destructor for the copy of the object created by the runtime and
-indicate that the throw stack entry may be discarded when it reaches the
-top of the throw stack.
+If nothing refers to the primary throw entry any more, call the destructor of
+its object (once).  A detached entry is released as well.
 */
 {
   void*				object_address;
-  a_throw_stack_entry_ptr	primary_tsep;
 
-  /* If this is a rethrow, get a pointer to the throw stack entry associated
-     with the original throw. */
-  primary_tsep = tsep->is_rethrow ? tsep->primary_entry : tsep;
-  if (!tsep->discard_entry) {
-    /* If this is the first time the routine has been called for this entry,
-       set the discard flag and decrement the use count. */
-    tsep->discard_entry = TRUE;
-    /* __exception_caught is not called for internal rethrows, so this
-       routine gets called for the eventual catch and needs to process the
-       throw stack entry for both the rethrow and the original throw. */
-    if (tsep->is_internal) primary_tsep->discard_entry = TRUE;
-    check_assertion(primary_tsep->use_count > 0);
-    primary_tsep->use_count--;
-  }  /* if */
-#if DEBUG
-  if (__debug_level >= 6) {
-    db_throw_stack("at start of destroy_thrown_object");
-    fprintf(__f_debug, "Possibly destroying object associated with tsep %p\n",
-            tsep);
-    fprintf(__f_debug, "  primary_tsep->use_count=%d\n",
-            (int)primary_tsep->use_count);
-  }  /* if */
-#endif /* DEBUG */
   /* If the entry can be destroyed, and the destructor has not already been
      called, then call it now. */
   if (primary_tsep->use_count == 0 && !primary_tsep->dtor_called) {
@@ -1196,7 +1185,51 @@ top of the throw stack.
 #endif /* ifdef __EDG_IA64_ABI */
       }  /* if */
     }  /* if */
+    /* A detached entry is not on the throw stack: nothing else will release
+       it. */
+    if (primary_tsep->detached) release_detached_entry(primary_tsep);
   }  /* if */
+}  /* destroy_primary_if_unused */
+
+
+
+static void destroy_thrown_object(a_throw_stack_entry_ptr	tsep)
+/*
+Call the destructor for the copy of the object created by the runtime and
+indicate that the throw stack entry may be discarded when it reaches the
+top of the throw stack.
+*/
+{
+  a_throw_stack_entry_ptr	primary_tsep;
+
+  /* If this is a rethrow, get a pointer to the throw stack entry associated
+     with the original throw. */
+  primary_tsep = tsep->is_rethrow ? tsep->primary_entry : tsep;
+  if (!tsep->discard_entry) {
+    /* If this is the first time the routine has been called for this entry,
+       set the discard flag and decrement the use count. */
+    tsep->discard_entry = TRUE;
+    /* The handler is over, so a later "throw;" must not pick this entry (it
+       can stay on the throw stack after this point if a std::exception_ptr
+       still refers to it). */
+    tsep->in_handler = FALSE;
+    /* __exception_caught is not called for internal rethrows, so this
+       routine gets called for the eventual catch and needs to process the
+       throw stack entry for both the rethrow and the original throw. */
+    if (tsep->is_internal) primary_tsep->discard_entry = TRUE;
+    check_assertion(primary_tsep->use_count > 0);
+    primary_tsep->use_count--;
+  }  /* if */
+#if DEBUG
+  if (__debug_level >= 6) {
+    db_throw_stack("at start of destroy_thrown_object");
+    fprintf(__f_debug, "Possibly destroying object associated with tsep %p\n",
+            tsep);
+    fprintf(__f_debug, "  primary_tsep->use_count=%d\n",
+            (int)primary_tsep->use_count);
+  }  /* if */
+#endif /* DEBUG */
+  destroy_primary_if_unused(primary_tsep);
 }  /* destroy_thrown_object */
 
 
@@ -1693,6 +1726,8 @@ Push an entry onto the throw stack and initialize its fields.
   tsep->object_evaluation_complete = FALSE;
   tsep->throw_marker.next = NULL;
   tsep->throw_marker.kind = ehsek_throw_processing_marker;
+  tsep->detached = FALSE;
+  tsep->detached_free = NULL;
 }  /* push_throw_stack */
 
 
@@ -1706,7 +1741,14 @@ rethrow.
 
   /* Find the throw stack entry for the throw currently being handled. */
   for (; tsep != NULL; tsep = tsep->next) {
-    if (tsep->in_handler && !tsep->is_rethrow) break;
+    if (tsep->in_handler) {
+      /* The innermost handler is running.  If it handles a rethrow, the
+         object belongs to the primary entry, which is not necessarily on the
+         throw stack above this point (std::rethrow_exception of a
+         std::exception_ptr, see __eh_rethrow_pinned). */
+      if (tsep->is_rethrow) tsep = tsep->primary_entry;
+      break;
+    }  /* if */
   }  /* for */
   if (tsep == NULL) {
     /* No handler is currently active. */
@@ -1872,6 +1914,40 @@ because that is how it is passed by the code generated by the front end.
 #endif /* ABI_CHANGES_FOR_RTTI */
 
 
+static void free_discarded_entries(void)
+/*
+Free any entries with the discard_entry flag set that are at the top of the
+throw stack.  This always frees the top entry (when __free_thrown_object has
+just destroyed it) but may also free additional entries associated with
+pending catches that were later skipped over by a throw.  A primary entry
+that a std::exception_ptr still refers to (use_count > 0) is kept, and so is
+everything below it.
+*/
+{
+  while (curr_throw_stack_entry != NULL &&
+         curr_throw_stack_entry->discard_entry &&
+         (curr_throw_stack_entry->is_rethrow ||
+          curr_throw_stack_entry->use_count == 0)) {
+    a_throw_stack_entry_ptr	tsep = curr_throw_stack_entry;
+    a_boolean			is_rethrow = tsep->is_rethrow;
+    void*			object_address = tsep->object_address;
+    /* If this is not a rethrow, the destructor should have already been
+       called. */
+    check_assertion(is_rethrow || tsep->dtor_called);
+    /* Unlink this entry from the throw stack. */
+    curr_throw_stack_entry = tsep->next;
+    /* Free the space used for the throw stack entry.  Note that the stack
+       entry and the object must be freed in the reverse of the order
+       in which they were allocated since this is a stack. */
+    eh_free_on_stack(tsep);
+    if (!is_rethrow) {
+      /* Free the space used for the copy of the object. */
+      eh_free_on_stack(object_address);
+    }  /* if */
+  }  /* while */
+}  /* free_discarded_entries */
+
+
 EXTERN_C void __free_thrown_object(void)
 /*
 Free the space used to make the copy of the thrown object.  Called at
@@ -1892,28 +1968,7 @@ versions of the ABI call __destroy_exception_object.
     db_throw_stack("in free_thrown_object after destroy_thrown_object");
   }  /* if */
 #endif /* DEBUG */
-  /* Free any entries with the discard_entry flag set.  This always frees
-     the top entry but may also free additional entries associated with
-     pending catches that were later skipped over by a throw. */
-  while (curr_throw_stack_entry != NULL &&
-         curr_throw_stack_entry->discard_entry) {
-    a_throw_stack_entry_ptr	tsep = curr_throw_stack_entry;
-    a_boolean			is_rethrow = tsep->is_rethrow;
-    void*			object_address = tsep->object_address;
-    /* If this is not a rethrow, the destructor should have already been
-       called. */
-    check_assertion(is_rethrow || tsep->dtor_called);
-    /* Unlink this entry from the throw stack. */
-    curr_throw_stack_entry = tsep->next;
-    /* Free the space used for the throw stack entry.  Note that the stack
-       entry and the object must be freed in the reverse of the order
-       in which they were allocated since this is a stack. */
-    eh_free_on_stack(tsep);
-    if (!is_rethrow) {
-      /* Free the space used for the copy of the object. */
-      eh_free_on_stack(object_address);
-    }  /* if */
-  }  /* while */
+  free_discarded_entries();
 #if DEBUG
   if (__debug_level >= 3) {
     db_throw_stack("at end of free_thrown_object");
@@ -2035,6 +2090,161 @@ and flag combination is allowed.
   }  /* if */
   return result;
 }  /* __can_throw_type */
+
+
+/*
+Support for std::exception_ptr (nfcxx extension).
+
+An exception_ptr keeps one reference (counted in use_count) on the primary
+throw entry of the exception it names.  While the reference exists the object
+is not destroyed, and the entry is not removed from the throw stack when its
+handler ends (free_discarded_entries stops at it).  Two kinds of entry can be
+referenced:
+
+  - a pinned entry: the exception being handled, still allocated on the EH
+    memory stack where __throw_setup put it (__eh_pin_current);
+  - a detached entry: made by __eh_make_detached for an object that lives in
+    memory the caller owns (std::make_exception_ptr).  It is allocated with
+    malloc and is not on the throw stack at all.
+
+__eh_rethrow_pinned throws either kind again as a rethrow of the primary
+entry, the way __rethrow does for the current exception.  The last reference
+(an exception_ptr or an active handler) destroys the object.  The handle is
+the entry's address.
+*/
+
+static void release_detached_entry(a_throw_stack_entry_ptr	tsep)
+/*
+The object of a detached entry has been destroyed and nothing refers to the
+entry any more: give back the object's storage and the entry.
+*/
+{
+  check_assertion(tsep->detached && tsep->use_count == 0 && tsep->dtor_called);
+  if (tsep->detached_free != NULL) (tsep->detached_free)(tsep->object_address);
+  eh_free_memory(tsep);
+}  /* release_detached_entry */
+
+
+EXTERN_C void* __eh_pin_current(void)
+/*
+Take a reference on the exception that is being handled (the innermost active
+handler) and return its handle, or NULL when no handler is active.
+*/
+{
+  a_throw_stack_entry_ptr	tsep;
+
+  for (tsep = curr_throw_stack_entry; tsep != NULL; tsep = tsep->next) {
+    if (tsep->in_handler && !tsep->discard_entry) break;
+  }  /* for */
+  if (tsep == NULL) return NULL;
+  if (tsep->is_rethrow) tsep = tsep->primary_entry;
+  tsep->use_count++;
+  return (void*)tsep;
+}  /* __eh_pin_current */
+
+
+EXTERN_C void* __eh_make_detached(a_type_info_impl_ptr	type_info,
+				  a_destructor_ptr	destructor,
+				  an_ETS_flag_set	flags,
+				  an_ETS_flag_set	*ptr_flags,
+				  void*			object_address,
+				  void			(*object_free)(void*))
+/*
+Make a detached entry for an object that has already been constructed at
+object_address (for a pointer type, the address of storage holding the
+pointer).  The caller owns one reference.  When the last reference is gone the
+destructor is called and object_free (if any) is called with object_address.
+*/
+{
+  a_throw_stack_entry_ptr	tsep;
+  unsigned char*		bytes;
+  a_sizeof_t			i;
+
+  tsep = (a_throw_stack_entry_ptr)eh_get_memory(sizeof(a_throw_stack_entry));
+  bytes = (unsigned char*)tsep;
+  for (i = 0; i < sizeof(a_throw_stack_entry); i++) bytes[i] = 0;
+  tsep->type_info = type_info;
+  tsep->destructor = destructor;
+  tsep->flags = flags;
+  tsep->ptr_flags = ptr_flags;
+  tsep->object_address = object_address;
+  tsep->use_count = 1;
+  tsep->object_copy_complete = TRUE;
+  tsep->object_evaluation_complete = TRUE;
+  tsep->detached = TRUE;
+  tsep->detached_free = object_free;
+  return (void*)tsep;
+}  /* __eh_make_detached */
+
+
+EXTERN_C void __eh_pin(void* handle)
+/*
+Take one more reference on an entry (a copy of an exception_ptr).
+*/
+{
+  ((a_throw_stack_entry_ptr)handle)->use_count++;
+}  /* __eh_pin */
+
+
+EXTERN_C void __eh_unpin(void* handle)
+/*
+Give up a reference taken by __eh_pin_current, __eh_make_detached or __eh_pin.
+The last one destroys the object, and removes a pinned entry from the throw
+stack when it is at the top.
+*/
+{
+  a_throw_stack_entry_ptr	tsep = (a_throw_stack_entry_ptr)handle;
+  a_boolean			detached = tsep->detached;
+
+  check_assertion(tsep->use_count > 0);
+  tsep->use_count--;
+  if (tsep->use_count == 0 && !tsep->dtor_called) {
+    destroy_primary_if_unused(tsep);
+    /* A detached entry has been released by now.  A pinned entry stays until
+       it reaches the top of the stack. */
+    if (!detached) free_discarded_entries();
+  }  /* if */
+}  /* __eh_unpin */
+
+
+EXTERN_C void* __eh_pinned_object(void* handle)
+/*
+The address of the exception object (for a thrown pointer, of the storage that
+holds the pointer).
+*/
+{
+  return ((a_throw_stack_entry_ptr)handle)->object_address;
+}  /* __eh_pinned_object */
+
+
+EXTERN_C a_type_info_impl_ptr __eh_pinned_type(void* handle)
+/*
+The type_info of the exception object.
+*/
+{
+  return ((a_throw_stack_entry_ptr)handle)->type_info;
+}  /* __eh_pinned_type */
+
+
+EXTERN_C void __eh_rethrow_pinned(void* handle)
+/*
+Throw the exception that handle refers to again.
+*/
+{
+  a_throw_stack_entry_ptr	primary = (a_throw_stack_entry_ptr)handle;
+
+  push_throw_stack(primary->type_info,
+                   primary->destructor,
+                   primary->flags,
+                   primary->ptr_flags,
+                   primary->access_flags,
+                   primary->use_access_flags,
+                   primary->object_address,
+                   /*is_rethrow=*/TRUE,
+                   /*is_internal=*/FALSE,
+                   primary);
+  __throw();
+}  /* __eh_rethrow_pinned */
 
 #else /* !EXCEPTION_HANDLING */
 
