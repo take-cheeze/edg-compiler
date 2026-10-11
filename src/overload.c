@@ -16504,11 +16504,18 @@ not_direct_binding_case:
       }  /* if */
       if (has_explicit_this_parameter(conv_routine_type)) {
         /* Type deduction may be needed for the "this" parameter. */
+        an_arg_list_elem_ptr this_alep;
         check_assertion(source_operand != NULL);
+        /* Pass the operand itself, not just its type: deduction of a
+           forwarding "this auto&&" depends on whether the object is an lvalue
+           or an rvalue (adjust_deduction_pair reads it from the operand), so
+           a bare type would deduce "A" and make the parameter "A&&", which an
+           lvalue cannot bind to. */
+        this_alep = alloc_arg_list_elem_for_operand(source_operand);
         if (!deduce_one_parameter(
                            rout_type_supp(conv_routine_type)->param_type_list,
-                           (a_type*)NULL, (an_arg_list_elem**)NULL,
-                           source_operand->type, base_conversion_symbol,
+                           (a_type*)NULL, &this_alep,
+                           (a_type*)NULL, base_conversion_symbol,
                            &template_arg_list)) {
           /* Deduction failed. */
           goto reject_function;
