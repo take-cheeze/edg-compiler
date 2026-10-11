@@ -1066,6 +1066,7 @@ destination type (this comes up in a Microsoft-mode extension).
                                             /*is_decl_context=*/FALSE,
                                             /*ignore_noexcept=*/TRUE,
                                             /*in_class_specialization=*/FALSE,
+                                            /*is_explicit_spec=*/FALSE,
                                             &is_new_template_instance);
           *match_level = aml_exact;
           number_of_matches = 1;
@@ -1228,6 +1229,7 @@ destination type (this comes up in a Microsoft-mode extension).
                                             /*is_decl_context=*/FALSE,
                                             /*ignore_noexcept=*/TRUE,
                                             /*in_class_specialization=*/FALSE,
+                                            /*is_explicit_spec=*/FALSE,
                                             &is_new_template_instance);
         }  /* if */
       }  /* if */

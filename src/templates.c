@@ -21357,7 +21357,8 @@ static a_symbol_ptr make_template_function(
 			a_symbol_ptr		templ_sym,
 			a_template_arg_ptr	templ_arg_list,
 			a_ctws_options_set	ctws_options,
-			a_boolean		in_class_specialization)
+			a_boolean		in_class_specialization,
+			a_boolean		is_explicit_spec)
 /*
 Allocate the symbol and routine entry for a template function, based on
 the function template (represented by templ_sym), and allocate and enter
@@ -21368,7 +21369,9 @@ type based on the template argument list and the template parameter list
 
 ctws_options specifies the CTWS options to be used when verifying the routine
 type that is created.  in_class_specialization is TRUE for a Microsoft
-mode in-class specialization.
+mode in-class specialization.  is_explicit_spec is TRUE if the
+instance is for an explicit specialization; such a routine takes its
+attributes from its own declaration, not from the primary template.
 */
 {
   a_symbol_ptr                      sym = NULL;
@@ -21746,7 +21749,8 @@ mode in-class specialization.
                                 sym, &sym->decl_position,
                                 (a_source_sequence_entry_ptr)NULL);
     }  /* if */
-    if (templ_rout->source_corresp.attributes != NULL) {
+    if (templ_rout->source_corresp.attributes != NULL &&
+        !is_explicit_spec) {
       /* We use the attributes copied from the prototype instantiation rather
          than scanning them from the cache.  That ensures that we pick up the
          complete set of attributes that might have been specified.  E.g.:
@@ -21755,6 +21759,8 @@ mode in-class specialization.
            template void f<int>();  // No attributes in cache, but
                                     // templ_rout->source_corresp.attributes is
                                     // not null.
+         An explicit specialization is a separate declaration and does not
+         inherit the attributes of the primary template (e.g., always_inline).
       */
       attach_attributes_to_routine_instance(rp, templ_sym, tssp,
                                             /*primary_only=*/FALSE);
@@ -22245,6 +22251,7 @@ a_symbol_ptr matching_template_function(
 				a_boolean	    is_decl_context,
 				a_boolean	    ignore_noexcept,
 				a_boolean	    in_class_specialization,
+				a_boolean	    is_explicit_spec,
 				a_boolean	    *is_new_template_instance)
 /*
 Search for a template function based on the function template represented
@@ -22259,6 +22266,9 @@ the matching process.  If ignore_noexcept is TRUE, top-level noexcept
 specifiers on the function type are ignored even in modes where such
 specifiers are part of that type.  explicit_arg_list is non-NULL if an
 explicitly-specified template argument list was provided.
+is_explicit_spec is TRUE if the declaration being matched is an
+explicit specialization; a new instance created for it does not inherit the
+attributes of the primary template.
 *is_new_template_instance is returned TRUE if a new template instance is
 created with this call.
 */
@@ -22289,7 +22299,8 @@ created with this call.
       /* Use the template arg list to create a new symbol. */
       sym = make_template_function(templ_sym, templ_arg_list,
                                    CTWS_IS_OVERLOAD_CANDIDATE,
-				   in_class_specialization);
+				   in_class_specialization,
+				   is_explicit_spec);
       instantiate_exception_spec_if_needed(sym);
       *is_new_template_instance = TRUE;
     }  /* if */
@@ -23286,7 +23297,8 @@ resulting data structure and the pointer provided by the caller is set to NULL.
     } else {
       sym = make_template_function(templ_sym, list_for_instantiation,
                                    CTWS_IS_OVERLOAD_CANDIDATE,
-                                   /*in_class_specialization=*/FALSE);
+                                   /*in_class_specialization=*/FALSE,
+                                   /*is_explicit_spec=*/FALSE);
 #if MICROSOFT_EXTENSIONS_ALLOWED
       if (cli_or_cx_enabled && tssp->is_generic) {
         /* Make sure the generic argument list satisfies the constraints
@@ -34368,6 +34380,7 @@ FALSE.
                                           (dps->is_explicit_instantiation ||
                                            dps->is_explicit_specialization),
                                           in_class_specialization,
+                                          dps->is_explicit_specialization,
                                           is_new_template_instance);
       }  /* if */
     }  /* for */

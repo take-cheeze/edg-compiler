@@ -3904,6 +3904,7 @@ when the declaration is a friend declaration within a class.
                                            /*is_decl_context=*/TRUE,
                                            /*ignore_noexcept=*/FALSE,
 					   /*in_class_specialization=*/FALSE,
+                                           /*is_explicit_spec=*/FALSE,
                                            &is_new_template_instance);
           other_decl = best_sym;
           match = sym;

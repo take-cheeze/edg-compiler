@@ -1,5 +1,22 @@
 Version 7.1
 
+10/11/26  [GH #2]
+Explicit specialization does not inherit always_inline from the primary
+
+A routine created for an explicit specialization copied the attributes of the
+primary template, so an explicit specialization declared in a header and
+defined in another translation unit was given the always_inline attribute of
+the primary template.  In the generated C, a call to the specialization then
+named an always_inline routine with no body in that translation unit, which
+gcc rejects.  An explicit specialization now takes only the attributes on its
+own declaration, as in GCC.  For example, with
+
+  template <typename T>
+  inline __attribute__((always_inline)) T* create(Arena* a);
+  template <> Msg* create<Msg>(Arena* a);   // defined in another file
+
+a call to create<Msg>(a) is emitted as an ordinary call.
+
 10/9/26  [GH #27]
 Clearer diagnostic when auto is deduced from an incomplete type
 
