@@ -27515,11 +27515,16 @@ the value representation of the integer value.
                        type_is(tp, tk_integer)) {
               int_kind = tp->variant.integer.int_kind;
               is_signed = int_kind_is_signed[int_kind];
-              if (conv_float_value_to_int_value(
+              if (saturate_float_to_unsigned_value(
                                             fp_value(opnd1_value),
                                             opnd1_type->variant.float_kind,
                                             (an_integer_value*)result_storage,
-                                            is_signed, &depends_on_fp_mode)) {
+                                            tp,
+                                            conv_float_value_to_int_value(
+                                            fp_value(opnd1_value),
+                                            opnd1_type->variant.float_kind,
+                                            (an_integer_value*)result_storage,
+                                            is_signed, &depends_on_fp_mode))) {
                 ovfl = FALSE;
                 CHECK_int_range((an_integer_value*)(result_storage), tp);
               } else {
