@@ -700,6 +700,37 @@ on the floating-point mode.  Otherwise, return FALSE.
   return !err;
 }  /* conv_float_value_to_int_value */
 
+a_boolean saturate_float_to_unsigned_value(an_internal_float_value *float_value,
+                                           a_float_kind            float_kind,
+                                           an_integer_value        *result_value,
+                                           a_type_ptr              type,
+                                           a_boolean               converted)
+/*
+In gcc mode, a positive floating-point value that does not fit an unsigned destination type becomes the largest value of
+that type: gcc folds (unsigned char)300.0 to 255, and a value above 2^64 to the maximum of the type too. Given the result
+of conv_float_value_to_int_value (converted), return TRUE if *result_value is then the value to use. Other cases keep the
+result of the conversion.
+*/
+{
+  an_integer_value  min_value, max_value;
+  a_type_ptr        int_tp = skip_typerefs(type);
+
+  if (!(gcc_mode || gpp_mode) || gnu_version < 30400 ||
+      int_kind_is_signed[int_tp->variant.integer.int_kind] ||
+      fp_is_negative(float_kind, float_value)) {
+    return converted;
+  }  /* if */
+  if (fp_is_nan(float_value, float_kind)) {
+    set_integer_value(result_value, (a_host_large_integer)0);   /* gcc folds a NaN to 0 */
+    return TRUE;
+  }  /* if */
+  integer_value_range_for_type(int_tp, &min_value, &max_value);
+  if (!converted || cmp_integer_values(result_value, FALSE, &max_value, FALSE) > 0) {
+    *result_value = max_value;
+  }  /* if */
+  return TRUE;
+}  /* saturate_float_to_unsigned_value */
+
 
 void conv_float_to_integer(a_constant        *old_constant,
                            a_constant        *new_constant,
@@ -752,6 +783,8 @@ operation is being evaluated as part of a nonconstant expression.
   is_signed = int_constant_is_signed(new_constant);
   err = !conv_float_value_to_int_value(float_value, float_kind, &result_value,
                                        is_signed, depends_on_fp_mode);
+  err = !saturate_float_to_unsigned_value(float_value, float_kind, &result_value,
+                                          new_constant->type, !err);
   if (err && gcc_mode && gnu_version >= 30400) {
     /* The float value cannot be represented as an integer value (or an
        unsigned integer value).  Use the largest or smallest (depending on
