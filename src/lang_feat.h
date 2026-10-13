@@ -1269,6 +1269,10 @@ EXTERN_THREAD a_boolean
 			/* Accept language_features supported by GNU and
 			   clang compilers. */
 EXTERN_THREAD a_boolean
+		cuda_mode;
+			/* Accept CUDA kernel launch syntax (<<< and >>>).  Set by
+			   --cuda; the lexer makes those tokens only then. */
+EXTERN_THREAD a_boolean
 		strict_gnu;
 			/* When TRUE, combined with gnu_mode or clang_mode,
 			   acts like -std=c* rather than -std=gnu*.  Valid in

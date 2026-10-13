@@ -899,6 +899,8 @@ check_abbreviation()
 --clang
 --clang_version
 --class_name_injection
+--cuda
+--no_cuda
 --clear_flag
 --clr
 --colors
@@ -1806,6 +1808,8 @@ process_option()
          --no_g++ | \
          --clang | \
          --no_clang | \
+         --cuda | \
+         --no_cuda | \
          --strict_gnu | \
          --no_strict_gnu | \
          --report_gnu_extensions | \

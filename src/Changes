@@ -1,5 +1,21 @@
 Version 7.1
 
+10/13/26  [--cuda]
+CUDA kernel launch syntax
+
+With the new --cuda option, the front end accepts the kernel launch syntax
+"kernel<<<grid, block[, shmem[, stream]]>>>(args)".  The launch is scanned as
+the call "__nfcxx_cuda_launch(kernel, grid, block, shmem, stream, args...)",
+where a missing shmem or stream is 0; the function is declared by the
+translation unit (see lib/cuda/nfcxx_cuda.h in nfcxx).  Without --cuda the
+"<<<" and ">>>" tokens are not recognized, as before.  A launch whose kernel
+has template arguments (kernel<T><<<...>>>) is refused: the front end does not
+instantiate such launches, and nfcxx's rewriter (scripts/cuda-rewrite.rb)
+handles them.  For example:
+
+  void k(int *p, int n);
+  void f(int *p, int n) { k<<<1, 32>>>(p, n); }   // with --cuda
+
 10/9/26  [GH #27]
 Clearer diagnostic when auto is deduced from an incomplete type
 
