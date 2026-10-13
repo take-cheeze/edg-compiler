@@ -1586,6 +1586,8 @@ enum a_token_kind : unsigned short {
   tok_builtin_le_synthesizes_from_spaceship,
   tok_builtin_ge_synthesizes_from_spaceship,
   tok_builtin_is_structural,
+  tok_cuda_launch_open      /* <<< (CUDA mode only) */,
+  tok_cuda_launch_close     /* >>> closing a pending <<< (CUDA mode only) */,
   /* Placeholder for last position in enumeration. */
   tok_last
 };
@@ -1856,6 +1858,8 @@ EXTERN_CONSTINIT_ARRAY(a_const_char*, token_names, tok_last + 1)
    "__builtin_le_synthesizes_from_spaceship",
    "__builtin_ge_synthesizes_from_spaceship",
    "__builtin_is_structural",
+   "<<<",
+   ">>>",
    "last" /* used to check that initialization is right. */
   }
 #endif /* VAR_INITIALIZERS */

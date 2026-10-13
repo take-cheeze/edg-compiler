@@ -3700,5 +3700,8 @@ ec_redeclaration_of_expansion_init_decl_name;;"%sq, declared in the init-stateme
 ec_redeclaration_of_expansion_range_decl_name;;"%sq, declared in the for-range-declaration of an expansion statement, may not be redeclared in this scope"
 ec_expansion_statement_context;INTERNAL;"expansion of element %d of the expansion statement %p"
 ec_det_during_expansion_statement_context;INTERNAL;"detected during expansion of element %d of the expansion statement %p"
+ec_cuda_template_launch_unsupported;;"a CUDA kernel launch with template arguments is not supported by the front end (use scripts/cuda-rewrite.rb)"
+ec_cuda_launch_config_items;;"a CUDA kernel launch needs 2 to 4 configuration items"
+ec_cuda_launch_missing_args;;"a CUDA kernel launch needs an argument list in parentheses after >>>"
  ###############################################################################
 

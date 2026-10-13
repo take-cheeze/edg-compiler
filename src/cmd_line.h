@@ -244,6 +244,7 @@ enum an_option_kind {
   optk_report_gnu_extensions,
   optk_short_enums,
   optk_clang_mode,
+  optk_cuda_mode,
   optk_clang_version,
   optk_strict_gnu,
 #endif /* GNU_EXTENSIONS_ALLOWED */
