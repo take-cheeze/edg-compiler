@@ -1291,6 +1291,10 @@ Initialize the option information table.
                          pchek_command_line);
   add_option_description(optk_clang_mode, "clang", '\0', /*value=*/TRUE,
                          /*arg_required=*/FALSE, pchek_command_line);
+  add_option_description(optk_cuda_mode, "cuda", '\0', /*value=*/TRUE,
+                         /*arg_required=*/FALSE, pchek_command_line);
+  add_option_description(optk_cuda_mode, "no_cuda", '\0', /*value=*/FALSE,
+                         /*arg_required=*/FALSE, pchek_command_line);
   add_option_description(optk_clang_mode, "no_clang", '\0', /*value=*/FALSE,
                          /*arg_required=*/FALSE, pchek_command_line);
   add_option_description(optk_gnu_version, "gnu_version",
@@ -11790,6 +11794,10 @@ enable_microsoft_mode:
            optk_clang_mode having been used.  Just set the global variable
            for the dialect here. */
         clang_mode = opt_value;
+        break;
+      case optk_cuda_mode:
+        /* --cuda enables the CUDA kernel launch syntax (see lexical.c). */
+        cuda_mode = opt_value;
         break;
       case optk_gnu_version:
         /* The version of the GNU compiler being emulated.  If specified

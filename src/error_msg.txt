@@ -3679,5 +3679,8 @@ ec_exp_interpolator;;"expected an interpolator (\"\\[\", \"\\[:\", \"\\{\", \"\\
 ec_interpolated_id_is_not_identifier;;"%sq does not spell an identifier"
 ec_interpolated_operand_is_not_token_sequence;;"the operand of a \"\\{...}\" interpolator is not a token sequence"
 ec_tag_redefined_differently;;"this declaration of %n does not declare the same type as the declaration %p"
+ec_cuda_template_launch_unsupported;;"a CUDA kernel launch with template arguments is not supported by the front end (use scripts/cuda-rewrite.rb)"
+ec_cuda_launch_config_items;;"a CUDA kernel launch needs 2 to 4 configuration items"
+ec_cuda_launch_missing_args;;"a CUDA kernel launch needs an argument list in parentheses after >>>"
  ###############################################################################
 
