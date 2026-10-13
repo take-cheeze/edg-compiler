@@ -8563,7 +8563,10 @@ is properly maintained.  Do the output as indicated by octl.
 #endif /* BACK_END_IS_C_GEN_BE */
 
 #if BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE
-#if DEBUG
+
+/* The temporary names below are numbered from a per-translation-unit counter in
+   every build, not from the address of the IL node: an address changes from run
+   to run, which makes the generated C and the object files differ between runs. */
 
 STATIC_THREAD uintptr_t
                 unique_id_counter;
@@ -8602,24 +8605,12 @@ pointer.
   return result;
 }  /* generate_unique_id_for_temporary */
 
-#endif /* DEBUG */
-
 a_temp_var_name_buffer form_temporary_name_for_back_end(void *ptr)
 /*
 Return a temporary name generated for the given IL pointer.
 */
 {
-  uintptr_t unique_id;
-
-#if DEBUG
-  if (db_active) {
-    unique_id = generate_unique_id_for_temporary(ptr);
-  } else
-#endif /* DEBUG */
-  /* Do not add code here. */
-  {
-    unique_id = unique_id_for_il_pointer(ptr);
-  }  /* if */
+  uintptr_t unique_id = generate_unique_id_for_temporary(ptr);
 
   a_temp_var_name_buffer result("__T", unique_id);
   return result;
@@ -8632,11 +8623,9 @@ Initialize the common logic for a C-like language generating back end.  These
 are initializations that must be redone for each generated file.
 */
 {
-#if DEBUG
   unique_id_counter = 0;
   ptr_to_unique_id = alloc_general_of_type(a_ptr_unique_id_map);
   construct(ptr_to_unique_id, /*mask_width=*/10u);
-#endif /* DEBUG */
 }  /* il_to_str_back_end_file_init */
 
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
