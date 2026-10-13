@@ -694,6 +694,18 @@ done_with_modifiers:
         }  /* if */
         break;
 #endif /* GNU_X86_ASM_EXTENSIONS_ALLOWED */
+      case 'h':
+      case 'l':
+        /* PTX operand classes of CUDA inline asm (--cuda): 'h' is a
+           16-bit and 'l' a 64-bit register.  The operand's width is its
+           type's, and the Path B emitter takes the register from that
+           type, so both are integer registers here. */
+        if (cuda_mode) {
+          ck = (an_asm_operand_constraint_kind)aoc_reg_integer;
+          break;
+        }
+        /* Otherwise an unknown letter: the default case reports it. */
+        /* FALLTHROUGH */
       default:
 #if GNU_X86_ASM_EXTENSIONS_ALLOWED
 unrecognized:
