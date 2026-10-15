@@ -17379,6 +17379,10 @@ This uses the same hashing algorithm found in hash_source_string.
 
 #endif /* UNICODE_VULNERABILITY_DETECTION_SUPPORTED */
 
+/* The number of "<<<" tokens scanned (CUDA mode) that no ">>>" has closed
+   yet.  A ">>>" closes a launch only while this is positive. */
+static int cuda_launch_pending = 0;
+
 a_token_kind get_token(void)
 /*
 Scan the next token of input, and return its kind.  The kind of token is
@@ -17901,7 +17905,15 @@ return_end_of_source_token:
       if (exp_system_header_name) {
         ctoken = scan_header_name();
         goto end_of_token_scan;
-      } else if ((ch = *(curr_char_loc+1)) == '<') {
+      } else if ((ch = *(curr_char_loc+1)) == '<' && cuda_mode &&
+                 *(curr_char_loc+2) == '<') {
+        /* CUDA kernel launch: "<<<" opens a launch configuration.  The
+           parser refuses a kernel with template arguments (k<T><<<...>>>),
+           which the front end does not instantiate: the rewriter does. */
+        ctoken = tok_cuda_launch_open;
+        cuda_launch_pending++;
+        goto three_char_token;
+      } else if (ch == '<') {
         if (*(curr_char_loc+2) == '=') {
           ctoken = tok_shift_left_assign;
           goto three_char_token;
@@ -17955,7 +17967,15 @@ return_end_of_source_token:
       break;
     case '>':
       /* One of ">>", ">>=", ">=", or ">". */
-      if ((ch = *(curr_char_loc+1)) == '>') {
+      if ((ch = *(curr_char_loc+1)) == '>' && cuda_mode &&
+          cuda_launch_pending > 0 && *(curr_char_loc+2) == '>') {
+        /* CUDA kernel launch: ">>>" closes the pending "<<<".  Otherwise
+           ">>>" is two closing angle brackets and a greater-than, as in
+           A<B<C<int>>>. */
+        ctoken = tok_cuda_launch_close;
+        cuda_launch_pending--;
+        goto three_char_token;
+      } else if (ch == '>') {
         if (*(curr_char_loc+2) == '=') {
           ctoken = tok_shift_right_assign;
           goto three_char_token;

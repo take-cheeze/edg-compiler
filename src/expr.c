@@ -1559,6 +1559,7 @@ current expression (used to decide how a comma should be treated).
     case tok_minus_minus:/* Postfix decrement. */
     case tok_lbracket: /* Subscript. */
     case tok_lparen:   /* Routine call. */
+    case tok_cuda_launch_open: /* Kernel launch "<<<" (CUDA mode). */
     case tok_period:   /* Field selector ".". */
     case tok_arrow:    /* Field selector "->". */
       new_prec = PREC_POSTFIX;
@@ -2114,7 +2115,8 @@ static void scan_function_call(an_operand             *operand,
                                a_boolean              is_multi_subscript,
                                a_rescan_control_block *rcblock,
                                an_operand             *result,
-                               an_operand             *p_subscript = NULL);
+                               an_operand             *p_subscript = NULL,
+                               an_arg_list_elem_ptr   supplied_args = NULL);
 
 static void scan_subscript_operator(an_operand             *operand_1,
                                     a_boolean              offsetof_case,
@@ -8042,7 +8044,8 @@ static void scan_function_call(an_operand             *operand,
                                a_boolean              is_multi_subscript,
                                a_rescan_control_block *rcblock,
                                an_operand             *result,
-             /* Defaulted: */  an_operand             *p_subscript)
+             /* Defaulted: */  an_operand             *p_subscript,
+             /* Defaulted: */  an_arg_list_elem_ptr   supplied_args)
 /*
 Scan a function call (if is_multi_subscript is FALSE) or a C++23 multi-
 subscript construct (if is_multi_subscript is TRUE).  When is_multi_subscript
@@ -8726,8 +8729,8 @@ and bound_function_selector are expected to be NULL in that case.
                         /*args_will_be_discarded=*/is_error_operand(operand),
                         /*is_custom_ms_attr_arg_list=*/FALSE,
                         rcblock,
-                        /*arg_list_supplied=*/FALSE,
-                        (an_arg_list_elem *)NULL,
+                        /*arg_list_supplied=*/supplied_args != NULL,
+                        supplied_args,
                         &arg_list,
                         (an_operand *)NULL, (a_boolean *)NULL,
                         &closing_paren_position);
@@ -44866,6 +44869,129 @@ Return TRUE if the tokens following the current token are ( <type-id> ).
 }  /* parenthesized_type_name_next */
 
 
+static void scan_cuda_launch(an_operand *kernel, an_operand *result)
+/*
+Scan a CUDA kernel launch (CUDA mode only, see --cuda):
+
+	kernel <<< config-list >>> ( argument-list )
+
+*kernel is the kernel operand, and the current token is the "<<<".  The
+launch is the call
+
+	__nfcxx_cuda_launch(kernel, grid, block, shmem, stream, args...)
+
+(lib/cuda/nfcxx_cuda.h), where a missing shmem or stream is 0.  The name is
+inserted into the token stream after the "<<<" and scanned there, so the call
+is resolved like any other.  The configuration items and the arguments are
+scanned as expression lists, and the call is made with them as its supplied
+argument list (see scan_function_call), so no source is scanned twice.  The
+call's operand is returned in *result.
+*/
+{
+  an_arg_list_elem_ptr config_list, args_list, launch_list, elem, last;
+  an_operand           callee, bound_selector, zero;
+  a_source_position    launch_position;
+  a_boolean            bad = FALSE;
+  int                  n_config = 0;
+
+  db_enter(4, "scan_cuda_launch");
+  launch_position = pos_curr_token;
+  if (kernel->is_template_id) {
+    /* The launch is still scanned, so that the tokens are consumed as usual;
+       it is not built. */
+    pos_error(ec_cuda_template_launch_unsupported, &launch_position);
+    bad = TRUE;
+  }  /* if */
+
+  /* Scan the callee: the name goes in after the "<<<", and the next token
+     is then the name. */
+  insert_string_into_token_stream("__nfcxx_cuda_launch",
+                                  /*insert_after=*/TRUE,
+                                  /*p_expand_macros=*/FALSE,
+                                  /*suspend_caching=*/FALSE,
+                                  pos_curr_token);
+  (void)get_token();
+  scan_identifier(&callee, EOPT_NO_OPTIONS, PREC_LOWEST,
+                  (a_rescan_control_block *)NULL, (a_symbol_ptr)NULL,
+                  (an_operand *)NULL, /*rescan_is_template_id=*/FALSE,
+                  (a_template_arg_ptr)NULL, (a_symbol_ptr *)NULL,
+                  (a_boolean *)NULL);
+
+  /* Scan the configuration items.  The current token is the first one, and
+     scan_expr_list stops at the ">>>". */
+  config_list = scan_expr_list(tok_cuda_launch_close,
+                               /*is_delegate_init=*/FALSE,
+                               /*is_custom_ms_attr_arg_list=*/FALSE,
+                               /*empty_list_okay=*/FALSE,
+                               /*trailing_comma_okay=*/FALSE,
+                               /*bundle=*/FALSE);
+  for (elem = config_list; elem != NULL; elem = elem->next) {
+    n_config++;
+  }  /* for */
+  if (n_config < 2 || n_config > 4) {
+    pos_error(ec_cuda_launch_config_items, &launch_position);
+    bad = TRUE;
+  }  /* if */
+  while (n_config < 4) {
+    /* A missing shmem or stream is 0, after the items that are given. */
+    make_integer_constant_operand(&zero, 0);
+    elem = alloc_arg_list_elem_for_operand(&zero);
+    if (config_list == NULL) {
+      config_list = elem;
+    } else {
+      for (last = config_list; last->next != NULL; last = last->next) {
+      }  /* for */
+      last->next = elem;
+    }  /* if */
+    n_config++;
+  }  /* while */
+
+  /* Scan the argument list after the ">>>". */
+  (void)get_token();
+  if (curr_token != tok_lparen) {
+    /* Nothing after the ">>>" is consumed: it belongs to the enclosing
+       statement. */
+    pos_error(ec_cuda_launch_missing_args, &launch_position);
+    make_error_operand(result);
+    goto done;
+  }  /* if */
+  (void)get_token();
+  args_list = scan_expr_list(tok_rparen,
+                             /*is_delegate_init=*/FALSE,
+                             /*is_custom_ms_attr_arg_list=*/FALSE,
+                             /*empty_list_okay=*/TRUE,
+                             /*trailing_comma_okay=*/FALSE,
+                             /*bundle=*/FALSE);
+  /* As in scan_call_arguments, the ")" is consumed here (the supplied
+     argument list is not read from source). */
+  (void)required_token(tok_rparen, ec_exp_rparen);
+
+  /* The launch's arguments: the kernel, the configuration, then the
+     arguments of the kernel. */
+  launch_list = alloc_arg_list_elem_for_operand(kernel);
+  for (elem = launch_list; elem->next != NULL; elem = elem->next) {
+  }  /* for */
+  elem->next = config_list;
+  for (elem = config_list; elem->next != NULL; elem = elem->next) {
+  }  /* for */
+  elem->next = args_list;
+
+  if (bad) {
+    operand_will_not_be_used_because_of_error(kernel);
+    free_arg_list(launch_list);
+    make_error_operand(result);
+  } else {
+    scan_function_call(&callee, &bound_selector, /*is_multi_subscript=*/FALSE,
+                       (a_rescan_control_block *)NULL, result,
+                       (an_operand *)NULL, launch_list);
+  }  /* if */
+
+done:
+  db_exit();
+}  /* scan_cuda_launch */
+
+
+
 static void scan_expr_full(an_operand               *result,
                            an_operand               *bound_function_selector,
                            int                      prec_level,
@@ -46299,6 +46425,11 @@ bad_start_of_primary:
         scan_function_call(&operand, &local_bound_function_selector,
                            /*is_multi_subscript=*/FALSE,
                            (a_rescan_control_block *)NULL, &local_result);
+        break;
+      case tok_cuda_launch_open:
+        /* CUDA kernel launch (CUDA mode): kernel <<< config >>> ( args ). */
+        keep_allow_call_with_incomplete_return_type = TRUE;
+        scan_cuda_launch(&operand, &local_result);
         break;
       case tok_period:
       case tok_arrow:
