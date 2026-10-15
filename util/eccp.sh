@@ -3215,6 +3215,19 @@ then
           rm -f $tmpfile.c $tmpfile.o
         fi
       fi
+#     A successful link with automatic instantiation has used the
+#     instantiation request file (.ii) of each object it was given.  Leaving
+#     it beside the object makes a later link that gives that object together
+#     with another object report the same instantiation as assigned to both
+#     ("bad instantiation request file").  The .ti record of the object is
+#     what a later link needs, and it is kept.
+      if [ $max_status -eq 0 -a $automatic_instantiation -ne 0 ] ; then
+        for obj_file in $object_files ; do
+          case $obj_file in
+            *.o) rm -f ${obj_file%.o}.ii ;;
+          esac
+        done
+      fi
       if [ $strip_executable -ne 0 ] ; then
 #       Run the "strip" command on the executable if requested.
         command="$STRIP $executable"
