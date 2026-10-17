@@ -3355,7 +3355,11 @@ Define system-specific predefined macros and builtin #assert predicates
 #endif /* ifdef __sparc */
 #endif /* ATT_PREPROCESSING_EXTENSIONS_ALLOWED */
 #ifdef __linux__
-  enter_linux_predefined_macros();
+  /* The Linux predefined macros describe the target, so they are skipped when the target is macOS. The cross
+     configuration (NFCXX_TARGET_APPLE, set in build/cross-macos.env only) builds a front end on a Linux host for a
+     macOS target, whose libc++ must not take the glibc branch. Native Linux builds leave the variable unset. */
+  if (getenv("NFCXX_TARGET_APPLE") == NULL)
+    enter_linux_predefined_macros();
 #else /* !defined(__linux__) */
 #ifdef __sparc
   enter_sparc_predefined_macros();
