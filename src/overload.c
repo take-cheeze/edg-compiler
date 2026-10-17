@@ -27534,7 +27534,15 @@ will be an lvalue instead of the usual prvalue.
          that would be handled higher up.  We don't have full information
          about the parameter here, but we probably don't need it because
          we're likely only to get here for non-parameter cases. */
+      /* GCC does not make a non-constant narrowing conversion an error in
+         a potentially evaluated context (it warns, and the chosen candidate
+         is initialized with the warning issued); match that here, so an
+         aggregate element such as the int64 values of a std::array<int, N>
+         argument does not make the candidate non-viable. */
       if (check_narrowing &&
+          !(gpp_version_is(any_version) &&
+            !is_constant_operand(operand_of_arg_list_elem(icp)) &&
+            curr_expr_is_potentially_evaluated()) &&
           check_narrowing_conversion(operand_of_arg_list_elem(icp),
                                      dest_type,
                                      /*check_enum_target=*/FALSE,
