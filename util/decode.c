@@ -7541,6 +7541,16 @@ A <template-args> encodes a template argument list.  The syntax is:
   ptr++;
   if (!suppress) write_id_ch('<', dctl);
   for (;*ptr != 'E';) {
+    if (ptr[0] == 'T' && ptr[1] == 'n') {
+      /* Tn <type> <value>: a non-type template argument whose type is
+         dependent (for example, an enable_if result).  The type is not part
+         of the printed argument, so demangle it without output (it still
+         counts for substitutions); the value that follows is printed. */
+      ptr += 2;
+      dctl->suppress_id_output++;
+      ptr = demangle_type(ptr, dctl);
+      dctl->suppress_id_output--;
+    }  /* if */
     ptr = demangle_template_arg(ptr, dctl);
     /* "E" ends the template argument list. */
     if (*ptr == 'E') break;
