@@ -16981,7 +16981,9 @@ template is instantiated.
       make_expression_operand(expr, result);
     } else {
       result->type = result->variant.constant.type;
-      result->state = (an_operand_state)os_prvalue;
+      /* A string (a character array) is a glvalue, as a string literal is. */
+      result->state = (an_operand_state)(result->variant.constant.kind == (a_constant_repr_kind)ck_string
+                                           ? os_glvalue : os_prvalue);
     }  /* if */
   }
 #if EXTRA_SOURCE_POSITIONS_IN_IL
@@ -17155,7 +17157,9 @@ index are known, and otherwise stays in the IL for instantiation.
       make_expression_operand(expr, result);
     } else {
       result->type = result->variant.constant.type;
-      result->state = (an_operand_state)os_prvalue;
+      /* A string (a character array) is a glvalue, as a string literal is. */
+      result->state = (an_operand_state)(result->variant.constant.kind == (a_constant_repr_kind)ck_string
+                                           ? os_glvalue : os_prvalue);
     }  /* if */
   }  /* if */
 #if EXTRA_SOURCE_POSITIONS_IN_IL

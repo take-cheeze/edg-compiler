@@ -10460,7 +10460,9 @@ string encoding, see mangled_typeinfo_string).  A template-dependent type sets
     *not_a_constant = TRUE;
     return;
   }  /* if */
-  fold_sycl_string_result(mangled_typeinfo_string(type), constant);
+  /* The stable name is a character array (as in the oneAPI headers' KernelInfoImpl, which indexes it and takes its
+     length as template arguments): the string constant itself, of type const char[N] with the terminating null. */
+  copy_constant(shareable_fs_string_constant(mangled_typeinfo_string(type)), constant);
   *not_a_constant = FALSE;
 }  /* fold_builtin_sycl_unique_stable_name */
 
