@@ -5501,6 +5501,26 @@ by subsequent calls.
 }  /* clang_feature_test_id */
 
 
+static a_boolean sycl_kernel_info_builtin_hidden(a_const_char *builtin_name)
+/*
+The SYCL kernel-info builtins (__builtin_sycl_kernel_*, docs/notes/sycl-kernel-builtins.md) are reported absent by
+__has_builtin when __SYCL_UNNAMED_LAMBDA__ is defined, as the real toolchain defines it. Then <sycl/detail/kernel_desc.hpp>
+takes its integration-header path: the per-kernel KernelInfoData specializations of the driver's second pass supply the
+kernel information. __builtin_sycl_unique_stable_name is not hidden: the same header uses it for the names.
+*/
+{
+  a_symbol_locator loc;
+
+  if (strncmp(builtin_name, "__builtin_sycl_kernel_", 22) != 0) {
+    return FALSE;
+  }  /* if */
+  clear_locator(&loc, &null_source_position);
+  return find_macro_symbol_by_name("__SYCL_UNNAMED_LAMBDA__",
+                                   (sizeof_t)strlen("__SYCL_UNNAMED_LAMBDA__"),
+                                   &loc) != NULL;
+}  /* sycl_kernel_info_builtin_hidden */
+
+
 static a_boolean scan_has_include(a_boolean is_include_next)
 /*
 Process the clang and WG21 SG10 __has_include macro or the clang-only
@@ -7706,7 +7726,7 @@ end_arg_expansion:;
 #if BUILTIN_FUNCTIONS_ENABLED
       a_const_char *builtin_name = clang_feature_test_id(map, NULL,
                                                          &arg_position);
-      if (builtin_name != NULL &&
+      if (builtin_name != NULL && !sycl_kernel_info_builtin_hidden(builtin_name) &&
           (builtin_function_or_keyword_is_enabled(builtin_name) ||
            (clangcpp_version_is(>=30900) &&
             (strcmp(builtin_name, "__type_pack_element") == 0 ||
