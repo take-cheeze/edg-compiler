@@ -29532,7 +29532,15 @@ indication in *rcblock).
     }  /* if */
     /* Check for different types of casts and do the cast. */
     if (!err && !processed) {
-      if (reinterpret_cast_conversion_possible(adj_source_type,
+      /* In a prototype instantiation a dependent operand or target type is not judged here: the generic cast below
+         stands for the conversion, and the real types are checked when the template is instantiated.  The target can
+         be a dependent class (a member alias template of a dependent class is classed as one), which the conversion
+         test rejects. */
+      warning_suggested = ec_no_error;
+      if ((is_template_dependent_context() &&
+           (is_template_dependent_type(source_type) ||
+            is_template_dependent_type(type_cast_to))) ||
+          reinterpret_cast_conversion_possible(adj_source_type,
                                                adj_type_cast_to,
                                                &warning_suggested)) {
         an_error_code warning_suggested2;
