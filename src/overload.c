@@ -27538,11 +27538,17 @@ will be an lvalue instead of the usual prvalue.
          a potentially evaluated context (it warns, and the chosen candidate
          is initialized with the warning issued); match that here, so an
          aggregate element such as the int64 values of a std::array<int, N>
-         argument does not make the candidate non-viable. */
+         argument does not make the candidate non-viable.  Other front-end
+         modes (clang, icpx) make it non-viable, unless the user has lowered
+         the narrowing diagnostic to a warning (-Wno-narrowing: the driver
+         passes --diag_warning for it, as icpx and ggml-sycl do); then the
+         candidate stays viable and the warning is issued on initialization. */
       if (check_narrowing &&
-          !(gpp_version_is(any_version) &&
-            !is_constant_operand(operand_of_arg_list_elem(icp)) &&
-            curr_expr_is_potentially_evaluated()) &&
+          !(!is_constant_operand(operand_of_arg_list_elem(icp)) &&
+            curr_expr_is_potentially_evaluated() &&
+            (gpp_version_is(any_version) ||
+             !is_effective_error(ec_narrowing_conversion, es_discretionary_error,
+                                 &operand_of_arg_list_elem(icp)->position))) &&
           check_narrowing_conversion(operand_of_arg_list_elem(icp),
                                      dest_type,
                                      /*check_enum_target=*/FALSE,
