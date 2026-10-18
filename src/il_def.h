@@ -1583,6 +1583,7 @@ enum a_token_kind : unsigned short {
   tok_builtin_le_synthesizes_from_spaceship,
   tok_builtin_ge_synthesizes_from_spaceship,
   tok_builtin_is_structural,
+  tok_builtin_sycl_unique_stable_name,
   tok_cuda_launch_open      /* <<< (CUDA mode only) */,
   tok_cuda_launch_close     /* >>> closing a pending <<< (CUDA mode only) */,
   /* Placeholder for last position in enumeration. */
@@ -1855,6 +1856,7 @@ EXTERN_CONSTINIT_ARRAY(a_const_char*, token_names, tok_last + 1)
    "__builtin_le_synthesizes_from_spaceship",
    "__builtin_ge_synthesizes_from_spaceship",
    "__builtin_is_structural",
+   "__builtin_sycl_unique_stable_name",
    "<<<",
    ">>>",
    "last" /* used to check that initialization is right. */
@@ -14585,6 +14587,11 @@ enum a_builtin_operation_kind : a_byte {
 			   operands, both types. */
   bok_builtin_is_structural,
 			/* __builtin_is_structural.  One type operand. */
+  bok_builtin_sycl_unique_stable_name,
+			/* __builtin_sycl_unique_stable_name (SYCL kernel
+			   support, see docs/notes/sycl-kernel-builtins.md).
+			   One type operand; folds to a const char pointer to
+			   the mangled name of the type. */
   bok_last              /* Marks the end of the list. */
 };
 
@@ -19312,6 +19319,7 @@ EXTERN_CONSTINIT_ARRAY(a_const_char*, builtin_operation_names, bok_last + 1)
   "__builtin_le_synthesizes_from_spaceship",
   "__builtin_ge_synthesizes_from_spaceship",
   "__builtin_is_structural",
+  "__builtin_sycl_unique_stable_name",
   "last"
 }
 #endif /* VAR_INITIALIZERS */

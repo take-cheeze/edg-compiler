@@ -874,6 +874,10 @@ modes.
   if (gnu_version_is(>=160000)) {
     enter_keyword(tok_builtin_is_structural, "__builtin_is_structural");
   }  /* if */
+  /* SYCL kernel support for the real <sycl/sycl.hpp> headers (docs/notes/sycl-kernel-builtins.md). Enabled in every mode:
+     the names are reserved for these headers, and __has_builtin reports them as keywords. */
+  enter_keyword(tok_builtin_sycl_unique_stable_name,
+                "__builtin_sycl_unique_stable_name");
   enter_keyword(tok_has_trivial_move_constructor,
                 "__has_trivial_move_constructor");
   enter_keyword(tok_has_trivial_move_assign, "__has_trivial_move_assign");

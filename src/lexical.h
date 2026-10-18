@@ -1874,6 +1874,7 @@ EXTERN_CONSTINIT_ARRAY(an_opname_kind, opname_kind_for_token, tok_last + 1)
    onk_none,           /* tok_builtin_le_synthesizes_from_spaceship */
    onk_none,           /* tok_builtin_ge_synthesizes_from_spaceship */
    onk_none,           /* tok_builtin_is_structural */
+   onk_none,           /* tok_builtin_sycl_unique_stable_name */
    onk_none,           /* tok_cuda_launch_open */
    onk_none,           /* tok_cuda_launch_close */
    onk_last            /* tok_last */
