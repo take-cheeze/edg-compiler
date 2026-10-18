@@ -137,6 +137,11 @@ STATIC_THREAD int
 
 STATIC_THREAD a_byte_boolean
 		option_kind_used[(int)optk_last+1];
+
+a_boolean gnu_version_given(void)
+{
+  return option_kind_used[(int)optk_gnu_version];
+}  /* gnu_version_given */
 			/* An array indexed by option kind that indicates
 			   whether the option kind has been specified in
 			   the command line. */
