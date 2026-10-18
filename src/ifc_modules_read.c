@@ -16502,7 +16502,10 @@ no corresponding type, return an error type.
                 result = float_type(fk_float);
                 break;
               case ifc_tps_bit16:
-                result = float_type(fk_std_float16);
+                /* std::float16_t and __fp16 share one form; the writer gives
+                   __fp16 the plain sign (see enter_float_type). */
+                result = float_type(sign == ifc_tss_plain ? fk_fp16
+                                                          : fk_std_float16);
                 break;
               case ifc_tps_bit32:
                 result = float_type(fk_std_float32);
