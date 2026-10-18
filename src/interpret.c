@@ -24881,6 +24881,47 @@ extern a_boolean sycl_kernel_int_value(a_builtin_operation_kind kind, a_type_ptr
 extern const char *sycl_kernel_string_value(a_builtin_operation_kind kind, a_type_ptr kt);
 
 
+static void sycl_kernel_dump_record(a_type_ptr kt, const char *name)
+/*
+The SYCL pre-pass (docs/notes/sycl-kernel-builtins.md): with NFCXX_SYCL_DUMP set to a file, each kernel whose kernel name is
+interpreted appends one tab-separated line to it: the stable name, the closure size, the line, the column, the file, the
+parameter count, and per parameter the kind, the info (the size, or the access target for an accessor) and the offset. The
+driver's second pass writes the KernelInfoData specializations from these lines.
+*/
+{
+  const char *path = getenv("NFCXX_SYCL_DUMP");
+  FILE       *f;
+  a_host_large_integer value = 0;
+  a_boolean  unsupported = FALSE;
+  a_host_large_unsigned count, i;
+
+  if (path == NULL || (f = fopen(path, "a")) == NULL) {
+    return;
+  }  /* if */
+  (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_line_number, kt, 0, &value, &unsupported);
+  fprintf(f, "%s\t%lld\t%lld", name, (long long)kt->size, (long long)value);
+  (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_column_number, kt, 0, &value, &unsupported);
+  fprintf(f, "\t%lld\t%s", (long long)value, sycl_kernel_string_value(bok_builtin_sycl_kernel_file_name, kt));
+  (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_param_count, kt, 0, &value, &unsupported);
+  count = (a_host_large_unsigned)value;
+  fprintf(f, "\t%lu", (unsigned long)count);
+  for (i = 0; i < count; i++) {
+    a_host_large_integer kind = 0, info = 0, offset = 0;
+    (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_param_kind, kt, (a_host_large_integer)i, &kind, &unsupported);
+    if (kind == 0) {
+      (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_param_access_target, kt, (a_host_large_integer)i, &info,
+                                  &unsupported);
+    } else {
+      (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_param_size, kt, (a_host_large_integer)i, &info, &unsupported);
+    }  /* if */
+    (void)sycl_kernel_int_value(bok_builtin_sycl_kernel_param_offset, kt, (a_host_large_integer)i, &offset, &unsupported);
+    fprintf(f, "\t%lld\t%lld\t%lld", (long long)kind, (long long)info, (long long)offset);
+  }  /* for */
+  fprintf(f, "\n");
+  (void)fclose(f);
+}  /* sycl_kernel_dump_record */
+
+
 static a_boolean do_constexpr_sycl_kernel_info(an_interpreter_state *ips,
                                                an_expr_node_ptr     expr,
                                                a_byte               *result_storage,
@@ -24910,6 +24951,9 @@ integer, after the parameter index operand (if any) is interpreted.
     const char *str = sycl_kernel_string_value(kind, kt);
 
     tp = skip_typerefs(expr->type);
+    if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_name) {
+      sycl_kernel_dump_record(kt, str);
+    }  /* if */
     if (is_class_or_struct(tp)) {
       /* The string_view members: a pointer to the characters (written as build_source_location_value writes its file
          name) and their count. */
