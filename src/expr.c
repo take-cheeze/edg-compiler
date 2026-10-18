@@ -29,6 +29,7 @@ expr.c -- Expression scanning routines.
 #include "declarator.h"
 #include "func_def.h"
 #include "interpret.h"
+#include "cmd_line.h"
 #include "layout.h"
 #include "ifc_modules.h"
 #if MICROSOFT_EXTENSIONS_ALLOWED
@@ -52089,7 +52090,9 @@ evaluated use is still rejected (ec_param_not_allowed, see identifier lookup).
 Older emulated versions keep the hiding.
 */
 {
-  return gnu_version < 110000;
+  /* Only an explicitly requested older GCC hides them. The default gnu_version is the build's own (80100 when this front
+     end is built without a GCC), which is not an emulated compiler, so the default keeps the parameters visible. */
+  return gnu_version_given() && gnu_version < 110000;
 }  /* hides_params_in_default_args */
 
 

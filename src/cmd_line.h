@@ -3049,6 +3049,8 @@ extern void proc_secondary_translation_units(void);
 
 extern void cmd_line_early_init(void);
 
+extern a_boolean gnu_version_given(void);
+
 extern void add_to_def_undef_list(a_const_char           *str,
                                   a_def_undef_string_ptr *du_list,
                                   a_def_undef_string_ptr *du_list_end,
