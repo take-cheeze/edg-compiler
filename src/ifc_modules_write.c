@@ -2587,7 +2587,7 @@ Enter the given class, struct, or union type into the IFC output state.  Return
 the type index for the class type.
 */
 {
-  check_assertion(is_class_or_struct(type));
+  check_assertion(is_class_struct_union_type(type));
   an_ifc_type_index
                 result;
   a_template_arg_ptr
@@ -2718,7 +2718,17 @@ for the float type.
       set_ifc_precision(&fund_type, ifc_tps_bit128);
       break;
     case fk_float16:
+      set_ifc_basis(&fund_type, ifc_tbs_float);
+      set_ifc_precision(&fund_type, ifc_tps_bit16);
+      break;
     case fk_fp16:
+      /* __fp16 has the format of _Float16 but is a distinct type with its
+         own mangling.  The IFC has no basis for it, so it is a bit16 float
+         with a plain (rather than signed) sign; the reader tells them apart
+         by the sign. */
+      set_ifc_basis(&fund_type, ifc_tbs_float);
+      set_ifc_precision(&fund_type, ifc_tps_bit16);
+      break;
     case fk_float32x:
     case fk_float64x:
     case fk_float80:
@@ -2732,7 +2742,8 @@ for the float type.
       break;
     default_is_unexpected();
   }  /* switch */
-  set_ifc_sign(&fund_type, ifc_tss_signed);
+  set_ifc_sign(&fund_type, type->variant.float_kind == fk_fp16 ? ifc_tss_plain
+                                                               : ifc_tss_signed);
   return result;
 }  /* an_ifc_il_map::enter_float_type */
 
@@ -6042,6 +6053,13 @@ Add all the types in the given scope to the given IL -> IFC mapping.
          information. */
       continue;
     }  /* if */
+    if (type->kind == tk_typeref && type->variant.typeref.predeclared) {
+      /* A predeclared typedef is declared in every translation unit (the
+         extended floating-point names of GNU mode, for example).  A
+         declaration that refers to one enters the type it names where the
+         reference is written (find_or_enter_type). */
+      continue;
+    }  /* if */
     (void)il_map->find_or_enter_type(type);
   }  /* for */
 }  /* dump_scope_types */
@@ -6069,6 +6087,14 @@ Add all the routines in the given scope to the given IL -> IFC mapping.
     if (rp->is_template_function && !rp->is_specialized) {
       /* This is a function template which will be handled when
          dump_scope_templates is called. */
+      continue;
+    }  /* if */
+    if (rp->variant.builtin_function_kind !=
+                                   (a_builtin_function_kind)bfk_none) {
+      /* A compiler builtin is predeclared in every translation unit, so it
+         is not a declaration of the module.  Some builtins have types the IFC
+         cannot represent (GNU mode declares builtins for the extended
+         floating-point types), so they are not written here. */
       continue;
     }  /* if */
     (void)il_map->find_or_enter_routine(rp);
