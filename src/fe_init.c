@@ -878,6 +878,25 @@ modes.
      the names are reserved for these headers, and __has_builtin reports them as keywords. */
   enter_keyword(tok_builtin_sycl_unique_stable_name,
                 "__builtin_sycl_unique_stable_name");
+  enter_keyword(tok_builtin_sycl_kernel_name, "__builtin_sycl_kernel_name");
+  enter_keyword(tok_builtin_sycl_kernel_param_count,
+                "__builtin_sycl_kernel_param_count");
+  enter_keyword(tok_builtin_sycl_kernel_param_kind,
+                "__builtin_sycl_kernel_param_kind");
+  enter_keyword(tok_builtin_sycl_kernel_param_access_target,
+                "__builtin_sycl_kernel_param_access_target");
+  enter_keyword(tok_builtin_sycl_kernel_param_size,
+                "__builtin_sycl_kernel_param_size");
+  enter_keyword(tok_builtin_sycl_kernel_param_offset,
+                "__builtin_sycl_kernel_param_offset");
+  enter_keyword(tok_builtin_sycl_kernel_file_name,
+                "__builtin_sycl_kernel_file_name");
+  enter_keyword(tok_builtin_sycl_kernel_function_name,
+                "__builtin_sycl_kernel_function_name");
+  enter_keyword(tok_builtin_sycl_kernel_line_number,
+                "__builtin_sycl_kernel_line_number");
+  enter_keyword(tok_builtin_sycl_kernel_column_number,
+                "__builtin_sycl_kernel_column_number");
   enter_keyword(tok_has_trivial_move_constructor,
                 "__has_trivial_move_constructor");
   enter_keyword(tok_has_trivial_move_assign, "__has_trivial_move_assign");

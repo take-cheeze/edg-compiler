@@ -15306,6 +15306,12 @@ bok_offsetof, which can include nonconstant subscripts.
     case bok_builtin_addressof:
       lower_builtin_addressof(expr);
       break;
+    case bok_builtin_sycl_kernel_param_kind:
+    case bok_builtin_sycl_kernel_param_access_target:
+    case bok_builtin_sycl_kernel_param_size:
+    case bok_builtin_sycl_kernel_param_offset:
+      /* A run-time parameter index: the C back end writes the value (cp_gen_be.c, gen_builtin_sycl_kernel_param). */
+      break;
     case bok_builtin_bit_cast:
       lower_builtin_bit_cast(expr);
       break;

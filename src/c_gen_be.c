@@ -646,6 +646,12 @@ static void dump_block(a_statement_ptr statement);
 static void dump_type(a_type_ptr type,
                       a_boolean  add_pointer_to);
 
+/* SYCL kernel-support builtins (folding.c); see docs/notes/sycl-kernel-builtins.md. */
+extern a_type_ptr sycl_kernel_of_identity(an_expr_node_ptr arg);
+extern a_boolean sycl_kernel_int_value(a_builtin_operation_kind kind, a_type_ptr kt,
+                                       a_host_large_integer index, a_host_large_integer *value,
+                                       a_boolean *unsupported);
+
 static void dump_expr(an_expr_node_ptr expr,
                       a_boolean        need_parens);
 /* Interfaces to dump_expr for the usual cases. */
@@ -7058,6 +7064,48 @@ sizeof_cases:
       dump_type(expr->variant.type_operand.type, /*add_pointer_to=*/FALSE);
       break;
     case enk_builtin_operation:
+      if (expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_kind ||
+          expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_access_target ||
+          expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_size ||
+          expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_offset) {
+        /* A SYCL kernel parameter query with a run-time index: a conditional expression over the parameters of the kernel
+           object type (docs/notes/sycl-kernel-builtins.md). */
+        an_expr_node_ptr         arg1 = expr->variant.builtin_operation.operands,
+                                 arg2 = arg1->next;
+        a_builtin_operation_kind kind = expr->variant.builtin_operation.kind;
+        a_type_ptr               kt = sycl_kernel_of_identity(arg1);
+        a_host_large_unsigned    i;
+        char                     buf[64];
+
+        check_assertion(arg2 != NULL && kt != NULL);
+        /* The class's fields are not available by now (the layout has been lowered), so the parameter table is
+           taken only when they are: the back end cannot write the value otherwise. */
+        if (fields_of(kt) == NULL) {
+          unexpected_condition_str("SYCL kernel parameter query with a run-time index: the parameters of the kernel "
+                                   "object are not available to the C back end");
+        }  /* if */
+        write_tok_ch('(');
+        for (i = 0; ; i++) {
+          a_host_large_integer value = 0;
+          a_boolean            unsupported = FALSE;
+          if (!sycl_kernel_int_value(kind, kt, (a_host_large_integer)i, &value,
+                                     &unsupported)) {
+            break;
+          }  /* if */
+          write_tok_str("((");
+          dump_expr(arg2, /*need_parens=*/FALSE);
+          (void)sprintf(buf, ") == %lu) ? ", (unsigned long)i);
+          write_tok_str(buf);
+          (void)sprintf(buf, "%lld : ", (long long)value);
+          write_tok_str(buf);
+        }  /* for */
+        write_tok_str("0)");
+        break;
+      }  /* if */
       { an_expr_node_ptr  arg = expr->variant.builtin_operation.operands;
         write_tok_str(
                builtin_operation_names[expr->variant.builtin_operation.kind]);
