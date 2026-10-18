@@ -41352,7 +41352,8 @@ type_identifier_case:
              (in the body, we'd have found the corresponding sk_variable
              instead).  This is only possible in a function declarator or
              in requires-expressions (which may have parameters). */
-          if (expr_is_inside_default_arg_expression() ||
+          if ((expr_is_inside_default_arg_expression() &&
+               curr_expr_is_potentially_evaluated()) ||
               (curr_expr_is_potentially_evaluated() &&
                !expr_stack->is_vla_dimension_expression &&
                !is_requires_expr_parameter(sym_ptr))) {
@@ -52076,6 +52077,22 @@ here.
 }  /* build_info_vector_construction */
 
 
+static a_boolean hides_params_in_default_args(void)
+/*
+The g++ emulation hides the function's parameters while a default argument is
+scanned, so a preceding parameter is an undefined identifier there.  Recent g++
+(checked: 15.2) and icpx accept a preceding parameter in an unevaluated operand
+of a default argument ("int x = sizeof(G)", "decltype(G)::fence_scope" in
+<sycl/ext/oneapi/experimental/root_group.hpp>), and reject a potentially
+evaluated one.  From gnu_version 110000 the parameters stay visible; the
+evaluated use is still rejected (ec_param_not_allowed, see identifier lookup).
+Older emulated versions keep the hiding.
+*/
+{
+  return gnu_version < 110000;
+}  /* hides_params_in_default_args */
+
+
 void scan_default_arg_expr(a_param_type_ptr ptp,
                            a_boolean        is_member_or_friend,
                            a_boolean        for_consteval_function)
@@ -52103,7 +52120,7 @@ interpreter.)
   check_assertion(scope_stack_top().kind == sck_func_prototype ||
                   in_code_from_module());
   make_error_operand(&result);
-  if (gpp_mode && !parameters_visible_late) {
+  if (gpp_mode && !parameters_visible_late && hides_params_in_default_args()) {
     /* GCC does not consider parameter declarations while scanning default
        arguments.  Some versions don't consider parameters visible at all
        within the function prototype scope: In that case, the parameters are
@@ -52227,7 +52244,9 @@ interpreter.)
 #if EXTRA_SOURCE_POSITIONS_IN_IL
   curr_construct_end_position = result.end_position;
 #endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
-  if (gpp_mode && !parameters_visible_late) make_param_syms_invisible(FALSE);
+  if (gpp_mode && !parameters_visible_late && hides_params_in_default_args()) {
+    make_param_syms_invisible(FALSE);
+  }  /* if */
 #if DEBUG
   if (debug_level >= 3) {
     db_expression(node);
@@ -59590,7 +59609,14 @@ left_associative is TRUE if the expansion should be evaluated as
                             (a_host_large_integer)1);
           make_constant_operand(con, result);
         } else {
-          pos_error(ec_invalid_empty_fold_expression, op_pos);
+          /* No identity value: an empty expansion is ill-formed ([expr.prim.fold]). In a
+             substitution context (e.g., a default template argument during deduction)
+             that is a deduction failure, not a hard error. */
+          if (expr_error_should_be_issued()) {
+            pos_error(ec_invalid_empty_fold_expression, op_pos);
+          } else {
+            record_suppressed_error();
+          }  /* if */
           make_error_operand(result);
         }  /* if */
         release_local_constant(&con);
