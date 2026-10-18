@@ -1940,6 +1940,21 @@ detached from the IL (and should therefore no longer be used), FALSE otherwise.
 }  /* do_inlining_of_call */
 
 
+static a_boolean body_ends_with_return(a_scope_ptr scope)
+/*
+Return TRUE if the last statement of the top-level block of scope (looking into
+nested blocks) is a return statement.
+*/
+{
+  a_statement_ptr stmt = scope->assoc_block;
+
+  do {
+    stmt = last_statement_in_block(stmt);
+  } while (stmt != NULL && stmt->kind == (a_statement_kind)stmk_block);
+  return stmt != NULL && stmt->kind == (a_statement_kind)stmk_return;
+}  /* body_ends_with_return */
+
+
 void set_up_routine_for_inlining(a_scope_ptr scope)
 /*
 The routine associated with the indicated scope is an inline routine and
@@ -1990,6 +2005,13 @@ the routine so it can be inlined on calls from here on.
   } else if (routine->never_inline) {
     /* An inline function can be marked with a "noinline" attribute. */
 #endif /* GNU_EXTENSIONS_ALLOWED || MICROSOFT_EXTENSIONS_ALLOWED */
+  } else if (is_class_struct_union_type(
+                 skip_typerefs(routine_type->variant.routine.return_type)) &&
+             !body_ends_with_return(scope)) {
+    /* A class-returning routine whose body never reaches a return (e.g., it
+       only throws) cannot be inlined: the inlined expansion of the missing
+       return value is an lvalue comma, which the caller's initialization
+       rejects (make_assignment_expr).  Calls still go through the routine. */
   } else if (!rtsp->prototyped && rtsp->param_type_list != NULL) {
     /* Old-style definitions cannot be inlined (C99 inline).  They're
        okay if they have no parameters. */
