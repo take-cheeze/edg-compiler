@@ -16994,6 +16994,181 @@ template is instantiated.
 }  /* scan_builtin_sycl_unique_stable_name */
 
 
+static a_type_ptr sycl_detail_type(a_type_ptr identity_type, a_const_char *name)
+/*
+The class or enumeration type called name that the oneAPI headers declare in the
+namespace of the KernelIdentity template (the argument's type), e.g. sycl::detail::
+kernel_param_kind_t or sycl::detail::string_view.  NULL when it is not declared there
+(no SYCL headers).
+*/
+{
+  a_type_ptr   tp = skip_typerefs(identity_type);
+  a_type_ptr   result = NULL;
+  a_symbol_ptr sym = NULL;
+
+  if (tp != NULL && is_class_or_struct(tp) &&
+      scp_is_namespace_member(&tp->source_corresp)) {
+    sym = look_up_name_string_in_namespace(name, parent_namespace_of(tp),
+                                           IDL_NO_OPTIONS);
+  }  /* if */
+  if (sym != NULL) {
+    /* The type of a class, enumeration or typedef symbol. */
+    if (symbol_is(sym, sk_enum_tag)) {
+      result = sym->variant.enumeration.type;
+    } else if (symbol_is(sym, sk_class_or_struct_tag)) {
+      result = sym->variant.class_struct_union.type;
+    } else if (symbol_is(sym, sk_type)) {
+      result = sym->variant.type.ptr;
+    }  /* if */
+  }  /* if */
+  return result;
+}  /* sycl_detail_type */
+
+
+static a_type_ptr sycl_kernel_info_result_type(a_builtin_operation_kind kind,
+                                               a_type_ptr               identity_type)
+/*
+The type of the SYCL kernel-info builtin operation kind, given the type of its
+KernelIdentity<K>() operand.  The string builtins yield sycl::detail::string_view
+(the string itself is a class value, see interpret.c) and the param kind yields
+sycl::detail::kernel_param_kind_t, as the oneAPI headers assign the results to
+those types; without those declarations (no SYCL headers) an int or a const char
+pointer is used.
+*/
+{
+  a_type_ptr result = NULL;
+
+  switch (kind) {
+    case bok_builtin_sycl_kernel_name:
+    case bok_builtin_sycl_kernel_file_name:
+    case bok_builtin_sycl_kernel_function_name:
+      result = sycl_detail_type(identity_type, "string_view");
+      if (result == NULL) {
+        result = make_pointer_type(make_qualified_type(
+                                        integer_type((an_integer_kind)ik_char),
+                                        (a_type_qualifier_set)TQ_CONST));
+      }  /* if */
+      break;
+    case bok_builtin_sycl_kernel_param_count:
+    case bok_builtin_sycl_kernel_line_number:
+    case bok_builtin_sycl_kernel_column_number:
+      result = integer_type((an_integer_kind)ik_unsigned_int);
+      break;
+    case bok_builtin_sycl_kernel_param_kind:
+      result = sycl_detail_type(identity_type, "kernel_param_kind_t");
+      if (result == NULL) {
+        result = integer_type((an_integer_kind)ik_int);
+      }  /* if */
+      break;
+    case bok_builtin_sycl_kernel_param_access_target:
+    case bok_builtin_sycl_kernel_param_size:
+    case bok_builtin_sycl_kernel_param_offset:
+      result = integer_type((an_integer_kind)ik_int);
+      break;
+    default:
+      unexpected_condition();
+      result = error_type();
+      break;
+  }  /* switch */
+  return result;
+}  /* sycl_kernel_info_result_type */
+
+
+static void scan_builtin_sycl_kernel_info(an_operand                *result,
+                                          a_builtin_operation_kind  kind)
+/*
+Scan one of the SYCL kernel-info constructs (docs/notes/sycl-kernel-builtins.md),
+the current token being the builtin's name:
+      __builtin_sycl_kernel_<what>(KernelIdentity<K>())
+      __builtin_sycl_kernel_param_<what>(KernelIdentity<K>(), <index>)
+The first operand is an expression of the type KernelIdentity<K>; only its type
+matters, so it is not evaluated.  The operation is folded here when K and the
+index are known, and otherwise stays in the IL for instantiation.
+*/
+{
+  an_expr_stack_entry  expr_stack_entry;
+  an_operand           operand;
+  an_expr_node_ptr     arg1 = NULL, arg2 = NULL, expr;
+  a_boolean            has_index, err = FALSE;
+  a_source_position    start_position;
+#if EXTRA_SOURCE_POSITIONS_IN_IL
+  a_source_position    end_position;
+#endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
+
+  has_index = (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_kind ||
+               kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_access_target ||
+               kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_size ||
+               kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_offset);
+  start_position = pos_curr_token;
+  (void)get_token();
+  (void)required_token(tok_lparen, ec_exp_lparen);
+  add_matching_stop_token(tok_rparen);
+  push_expr_stack((an_expression_kind)ek_sizeof, &expr_stack_entry,
+                  /*force_object_lifetime=*/FALSE,
+                  /*suppress_object_lifetime=*/FALSE);
+  expr_stack->unevaluated_expr_will_be_kept_in_il = TRUE;
+  if (has_index) add_stop_token(tok_comma);
+  scan_expr(&operand, PREC_LOWEST, EOPT_DISALLOW_COMMA_OPERATOR);
+  if (is_error_operand(&operand)) {
+    err = TRUE;
+  } else {
+    do_operand_transformations(&operand,
+                               TOPT_SUPPRESS_CHECK_FOR_INDEFINITE_FUNCTION);
+    arg1 = make_node_from_operand(&operand);
+  }  /* if */
+  if (has_index) {
+    (void)required_token(tok_comma, ec_exp_comma);
+    remove_stop_token(tok_comma);
+    scan_expr(&operand, PREC_LOWEST, EOPT_DISALLOW_COMMA_OPERATOR);
+    if (is_error_operand(&operand)) {
+      err = TRUE;
+    } else {
+      do_operand_transformations(&operand,
+                                 TOPT_SUPPRESS_CHECK_FOR_INDEFINITE_FUNCTION);
+      arg2 = make_node_from_operand(&operand);
+    }  /* if */
+  }  /* if */
+#if EXTRA_SOURCE_POSITIONS_IN_IL
+  end_position = end_pos_curr_token;
+#endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
+  (void)required_token(tok_rparen, ec_exp_rparen);
+  remove_matching_stop_token(tok_rparen);
+  if (err) {
+    make_error_operand(result);
+  } else {
+    a_boolean not_a_constant = FALSE;
+    expr = alloc_expr_node((an_expr_node_kind)enk_builtin_operation);
+    expr->type = sycl_kernel_info_result_type(kind, arg1->type);
+    expr->position = start_position;
+    expr->variant.builtin_operation.kind = kind;
+    expr->variant.builtin_operation.operands = arg1;
+    arg1->next = arg2;
+    record_operator_position_in_expr_rescan_info(expr, &start_position,
+                                                 NO_TOKEN_SEQUENCE_NUMBER,
+                                                 (a_source_position *)NULL);
+    clear_operand((an_operand_kind)ok_constant, result);
+    fold_builtin_operation_if_possible(
+                     expr, &result->variant.constant,
+                     curr_expr_kind_is_one_in_which_const_exprs_are_recorded(),
+                     &start_position, &not_a_constant);
+    if (not_a_constant) {
+      make_expression_operand(expr, result);
+    } else {
+      result->type = result->variant.constant.type;
+      result->state = (an_operand_state)os_prvalue;
+    }  /* if */
+  }  /* if */
+#if EXTRA_SOURCE_POSITIONS_IN_IL
+  set_operand_position(result, &start_position, &end_position,
+                       &start_position);
+#else /* !EXTRA_SOURCE_POSITIONS_IN_IL */
+  set_operand_position(result, &start_position, &start_position,
+                       &start_position);
+#endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
+  pop_expr_stack();
+}  /* scan_builtin_sycl_kernel_info */
+
+
 static void scan_builtin_has_attribute(an_operand *result)
 /*
 Scan a GNU construct of the form
@@ -38247,6 +38422,16 @@ Return TRUE if the indicated token is one that could start an expression.
     case tok_builtin_ge_synthesizes_from_spaceship:
     case tok_builtin_is_structural:
     case tok_builtin_sycl_unique_stable_name:
+    case tok_builtin_sycl_kernel_name:
+    case tok_builtin_sycl_kernel_param_count:
+    case tok_builtin_sycl_kernel_param_kind:
+    case tok_builtin_sycl_kernel_param_access_target:
+    case tok_builtin_sycl_kernel_param_size:
+    case tok_builtin_sycl_kernel_param_offset:
+    case tok_builtin_sycl_kernel_file_name:
+    case tok_builtin_sycl_kernel_function_name:
+    case tok_builtin_sycl_kernel_line_number:
+    case tok_builtin_sycl_kernel_column_number:
     case tok_coroutine_yield:
     case tok_coroutine_await:
     case tok_lsplice:
@@ -45939,6 +46124,56 @@ handle_nullptr:
     case tok_builtin_sycl_unique_stable_name:
       /* SYCL kernel support: __builtin_sycl_unique_stable_name. */
       scan_builtin_sycl_unique_stable_name(&local_result);
+      break;
+
+    case tok_builtin_sycl_kernel_name:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_name);
+      break;
+
+    case tok_builtin_sycl_kernel_param_count:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_param_count);
+      break;
+
+    case tok_builtin_sycl_kernel_param_kind:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_param_kind);
+      break;
+
+    case tok_builtin_sycl_kernel_param_access_target:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_param_access_target);
+      break;
+
+    case tok_builtin_sycl_kernel_param_size:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_param_size);
+      break;
+
+    case tok_builtin_sycl_kernel_param_offset:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_param_offset);
+      break;
+
+    case tok_builtin_sycl_kernel_file_name:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_file_name);
+      break;
+
+    case tok_builtin_sycl_kernel_function_name:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_function_name);
+      break;
+
+    case tok_builtin_sycl_kernel_line_number:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_line_number);
+      break;
+
+    case tok_builtin_sycl_kernel_column_number:
+      /* SYCL kernel support (docs/notes/sycl-kernel-builtins.md). */
+      scan_builtin_sycl_kernel_info(&local_result, bok_builtin_sycl_kernel_column_number);
       break;
 
     case tok_builtin_bit_cast:
@@ -55113,6 +55348,36 @@ TRUE if the operator is a unary operator, FALSE otherwise.
       break;
     case bok_builtin_sycl_unique_stable_name:
       operator_token = tok_builtin_sycl_unique_stable_name;
+      break;
+    case bok_builtin_sycl_kernel_name:
+      operator_token = tok_builtin_sycl_kernel_name;
+      break;
+    case bok_builtin_sycl_kernel_param_count:
+      operator_token = tok_builtin_sycl_kernel_param_count;
+      break;
+    case bok_builtin_sycl_kernel_param_kind:
+      operator_token = tok_builtin_sycl_kernel_param_kind;
+      break;
+    case bok_builtin_sycl_kernel_param_access_target:
+      operator_token = tok_builtin_sycl_kernel_param_access_target;
+      break;
+    case bok_builtin_sycl_kernel_param_size:
+      operator_token = tok_builtin_sycl_kernel_param_size;
+      break;
+    case bok_builtin_sycl_kernel_param_offset:
+      operator_token = tok_builtin_sycl_kernel_param_offset;
+      break;
+    case bok_builtin_sycl_kernel_file_name:
+      operator_token = tok_builtin_sycl_kernel_file_name;
+      break;
+    case bok_builtin_sycl_kernel_function_name:
+      operator_token = tok_builtin_sycl_kernel_function_name;
+      break;
+    case bok_builtin_sycl_kernel_line_number:
+      operator_token = tok_builtin_sycl_kernel_line_number;
+      break;
+    case bok_builtin_sycl_kernel_column_number:
+      operator_token = tok_builtin_sycl_kernel_column_number;
       break;
     case bok_builtin_bit_cast:
       operator_token = tok_builtin_bit_cast;

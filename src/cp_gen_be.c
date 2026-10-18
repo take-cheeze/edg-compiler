@@ -17960,6 +17960,53 @@ the attribute(s) are attached).
 }  /* gen_builtin_has_attribute */
 
 
+/* SYCL kernel-support builtins (folding.c); see docs/notes/sycl-kernel-builtins.md. */
+extern a_type_ptr sycl_kernel_of_identity(an_expr_node_ptr arg);
+extern a_boolean sycl_kernel_int_value(a_builtin_operation_kind kind, a_type_ptr kt,
+                                       a_host_large_integer index, a_host_large_integer *value,
+                                       a_boolean *unsupported);
+extern const char *sycl_kernel_string_value(a_builtin_operation_kind kind, a_type_ptr kt);
+
+static void gen_builtin_sycl_kernel_param(an_expr_node_ptr expr)
+/*
+A SYCL kernel parameter query (docs/notes/sycl-kernel-builtins.md) whose index is
+not a constant, as in the oneAPI headers' getKernelParamDesc.  The parameters of the
+kernel object type are known here, so the value is a conditional expression over
+the index: ((idx) == 0) ? v0 : ((idx) == 1) ? v1 : ... : 0.
+*/
+{
+  an_expr_node_ptr         arg1 = expr->variant.builtin_operation.operands,
+                           arg2 = arg1->next;
+  a_builtin_operation_kind kind = expr->variant.builtin_operation.kind;
+  a_type_ptr               kt = sycl_kernel_of_identity(arg1);
+  a_host_large_unsigned    i;
+  char                     buf[64];
+
+  check_assertion(arg2 != NULL && kt != NULL);
+  /* As in c_gen_be.c: the class's fields are gone by the back end, so the table cannot be written. */
+  if (fields_of(kt) == NULL) {
+    unexpected_condition_str("SYCL kernel parameter query with a run-time index: the parameters of the kernel "
+                             "object are not available to the C back end");
+  }  /* if */
+  write_tok_str("(");
+  for (i = 0; ; i++) {
+    a_host_large_integer value = 0;
+    a_boolean            unsupported = FALSE;
+    if (!sycl_kernel_int_value(kind, kt, (a_host_large_integer)i, &value,
+                               &unsupported)) {
+      break;
+    }  /* if */
+    write_tok_str("((");
+    gen_expr(arg2, /*need_parens=*/FALSE, /*obj_expr_of_mfunc_operator=*/FALSE);
+    (void)sprintf(buf, ") == %lu) ? ", (unsigned long)i);
+    write_tok_str(buf);
+    (void)sprintf(buf, "%lld : ", (long long)value);
+    write_tok_str(buf);
+  }  /* for */
+  write_tok_str("0)");
+}  /* gen_builtin_sycl_kernel_param */
+
+
 static void gen_builtin_operation(an_expr_node_ptr  expr)
 /*
 Render code for the given expression node, which represent a builtin operation.
@@ -17975,6 +18022,16 @@ Most cases fit a simple pattern, but some require special handling.
                          (a_builtin_operation_kind)bok_builtin_has_attribute) {
     /* __builtin_has_attribute also needs some special-case code. */
     gen_builtin_has_attribute(expr);
+  } else if (expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_kind ||
+             expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_access_target ||
+             expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_size ||
+             expr->variant.builtin_operation.kind ==
+                         (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_offset) {
+    /* The SYCL kernel parameter queries with a run-time index. */
+    gen_builtin_sycl_kernel_param(expr);
   } else {
     /* The normal case:
           <operation-name> ( <operand1>, <operand2>, ... )

@@ -10171,6 +10171,273 @@ tpck_expression variant and will point to the given expression.
 }  /* fold_edg_is_deducible */
 
 
+static void fold_sycl_string_result(a_const_char *str, a_constant_ptr constant)
+/*
+Make *constant the value of a SYCL kernel-support builtin that yields a string:
+a const char pointer to a copy of str.  A string literal decays to a pointer to
+its first character, so the constant has that decayed type.  The string is
+copied into file-scope storage, so str may be a temporary buffer.
+*/
+{
+  set_temporary_address_constant(shareable_fs_string_constant(str), constant);
+  constant->type = make_pointer_type(make_qualified_type(
+                                        integer_type((an_integer_kind)ik_char),
+                                        (a_type_qualifier_set)TQ_CONST));
+  constant->implicit_cast = TRUE;
+}  /* fold_sycl_string_result */
+
+
+a_type_ptr sycl_kernel_of_identity(an_expr_node_ptr arg)
+/*
+arg is the KernelIdentity<K>() operand of a SYCL kernel-info builtin: return K,
+the first template argument of its class type, or NULL when that is not a
+class template specialization.
+*/
+{
+  a_type_ptr         tp = skip_typerefs(arg->type);
+  a_template_arg_ptr tap;
+
+  if (tp == NULL || !is_class_or_struct(tp) ||
+      class_type_supp(tp)->template_arg_list == NULL) {
+    return NULL;
+  }  /* if */
+  tap = class_type_supp(tp)->template_arg_list;
+  if (!is_type_templ_arg(tap)) {
+    return NULL;
+  }  /* if */
+  return tap->variant.type;
+}  /* sycl_kernel_of_identity */
+
+
+static a_field_ptr sycl_kernel_field(a_type_ptr             kernel_type,
+                                     a_host_large_unsigned  index)
+/*
+The index-th (from 0) non-static data member of the kernel object type.  Each
+member is one kernel parameter: a lambda's captures, in declaration order.  NULL
+when there is no such member, or the kernel type is not a class.
+*/
+{
+  a_field_ptr           fp = NULL;
+  a_host_large_unsigned i;
+
+  if (is_class_or_struct(kernel_type)) {
+    fp = kernel_type->variant.class_struct_union.field_list;
+    for (i = 0; fp != NULL && i < index; i++) {
+      fp = fp->next;
+    }  /* for */
+  }  /* if */
+  return fp;
+}  /* sycl_kernel_field */
+
+
+static a_host_large_unsigned sycl_kernel_param_count(a_type_ptr kernel_type)
+/* The number of kernel parameters of the kernel object type (see sycl_kernel_field). */
+{
+  a_host_large_unsigned count = 0;
+  a_field_ptr           fp;
+
+  if (is_class_or_struct(kernel_type)) {
+    for (fp = kernel_type->variant.class_struct_union.field_list; fp != NULL;
+         fp = fp->next) {
+      count++;
+    }  /* for */
+  }  /* if */
+  return count;
+}  /* sycl_kernel_param_count */
+
+
+/* sycl::detail::kernel_param_kind_t values (the oneAPI headers' detail/kernel_desc.hpp). */
+#define SYCL_KIND_ACCESSOR_NONE 0
+#define SYCL_KIND_STD_LAYOUT    1
+#define SYCL_KIND_POINTER       3
+
+
+static a_boolean sycl_kernel_param_kind_of(a_field_ptr          fp,
+                                           a_host_large_integer *kind)
+/*
+Set *kind to the kernel_param_kind_t value of the captured object fp: a pointer
+is kind_pointer and a standard-layout object kind_std_layout.  Other captures
+(accessors, non-standard-layout classes, references, functions) are not
+supported yet, and the result is FALSE for them.
+*/
+{
+  a_type_ptr tp = skip_typerefs(fp->type);
+  a_boolean  result = FALSE;
+
+  if (is_pointer_type(tp)) {
+    *kind = SYCL_KIND_POINTER;
+    result = TRUE;
+  } else if (is_class_or_struct(tp)) {
+    if (symbol_supplement_for_class(tp)->standard_layout) {
+      *kind = SYCL_KIND_STD_LAYOUT;
+      result = TRUE;
+    }  /* if */
+  } else if (!is_reference_type(tp) && !is_function_type(tp)) {
+    *kind = SYCL_KIND_STD_LAYOUT;
+    result = TRUE;
+  }  /* if */
+  return result;
+}  /* sycl_kernel_param_kind_of */
+
+
+a_boolean sycl_kernel_int_value(a_builtin_operation_kind kind,
+                                a_type_ptr               kt,
+                                a_host_large_integer     index,
+                                a_host_large_integer     *value,
+                                a_boolean                *unsupported)
+/*
+The value of an integer SYCL kernel-info builtin (kind) for the kernel object type
+kt and, for the param_* kinds, the parameter index.  Returns FALSE when there is
+no such parameter, or (with *unsupported set) when the parameter is a capture kind
+that is not supported yet.
+*/
+{
+  a_boolean result = TRUE;
+
+  *unsupported = FALSE;
+  switch (kind) {
+    case bok_builtin_sycl_kernel_param_count:
+      *value = (a_host_large_integer)sycl_kernel_param_count(kt);
+      break;
+    case bok_builtin_sycl_kernel_line_number:
+    case bok_builtin_sycl_kernel_column_number: {
+      a_source_position pos = kt->source_corresp.decl_position;
+      a_const_char      *file_name = NULL, *full_name = NULL;
+      a_line_number     line_number = 0;
+      a_boolean         at_end = FALSE;
+
+      if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_line_number) {
+        (void)conv_seq_to_file_and_line(pos.seq, &file_name, &full_name,
+                                        &line_number, &at_end);
+        *value = (a_host_large_integer)line_number;
+      } else {
+        *value = (a_host_large_integer)pos.column;
+      }  /* if */
+      break;
+    }
+    case bok_builtin_sycl_kernel_param_kind:
+    case bok_builtin_sycl_kernel_param_access_target:
+    case bok_builtin_sycl_kernel_param_size:
+    case bok_builtin_sycl_kernel_param_offset: {
+      a_field_ptr fp = sycl_kernel_field(kt, (a_host_large_unsigned)index);
+      if (fp == NULL) {
+        result = FALSE;
+      } else if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_kind) {
+        if (!sycl_kernel_param_kind_of(fp, value)) {
+          *unsupported = TRUE;
+          result = FALSE;
+        }  /* if */
+      } else if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_access_target) {
+        *value = 0;
+      } else if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_param_size) {
+        *value = (a_host_large_integer)fp->type->size;
+      } else {
+        *value = (a_host_large_integer)fp->offset;
+      }  /* if */
+      break;
+    }
+    default:
+      unexpected_condition();
+      result = FALSE;
+      break;
+  }  /* switch */
+  return result;
+}  /* sycl_kernel_int_value */
+
+
+const char *sycl_kernel_string_value(a_builtin_operation_kind kind,
+                                     a_type_ptr               kt)
+/*
+The string of a SYCL kernel-info builtin that yields one: the kernel name (the
+mangled name of K), the file name of K's declaration, or the function name (""
+until the enclosing function is recorded).  The string is in file-scope storage
+(a persistent address), so it can serve as an interpreter key.
+*/
+{
+  const char *str = "";
+
+  if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_name) {
+    str = shareable_fs_string_constant(mangled_typeinfo_string(kt))->variant.string.value;
+  } else if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_file_name) {
+    a_source_position pos = kt->source_corresp.decl_position;
+    a_const_char      *file_name = NULL, *full_name = NULL;
+    a_line_number     line_number = 0;
+    a_boolean         at_end = FALSE;
+
+    (void)conv_seq_to_file_and_line(pos.seq, &file_name, &full_name,
+                                    &line_number, &at_end);
+    if (file_name != NULL) {
+      str = shareable_fs_string_constant(file_name)->variant.string.value;
+    }  /* if */
+  }  /* if */
+  return str;
+}  /* sycl_kernel_string_value */
+
+
+static void fold_builtin_sycl_kernel_info(an_expr_node_ptr expr,
+                                          a_constant_ptr   constant,
+                                          a_boolean        maintain_expression,
+                                          a_boolean        *not_a_constant)
+/*
+expr is an enk_builtin_operation node for one of the SYCL kernel-info builtins
+(expr.c, scan_builtin_sycl_kernel_info).  The first operand is KernelIdentity<K>(),
+K being the kernel object type; the parameter-index operand of the param_*
+builtins must be a constant.  The integer builtins fold here.  The string
+builtins have a class type (sycl::detail::string_view) and are evaluated by the
+interpreter (interpret.c) where a constant of that type is needed.  When K or
+the index is not known yet, *not_a_constant is set.
+*/
+{
+  an_expr_node_ptr         arg1 = expr->variant.builtin_operation.operands,
+                           arg2 = arg1->next;
+  a_builtin_operation_kind kind = expr->variant.builtin_operation.kind;
+  a_type_ptr               kt;
+  a_host_large_integer     index = 0, value = 0;
+  a_boolean                unsupported = FALSE;
+
+  kt = sycl_kernel_of_identity(arg1);
+  if (kt == NULL || is_template_dependent_type(kt)) {
+    *not_a_constant = TRUE;
+    return;
+  }  /* if */
+  if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_name ||
+      kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_file_name ||
+      kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_function_name) {
+    /* A class value (sycl::detail::string_view): evaluated by the interpreter, as __builtin_addressof is. */
+    *not_a_constant = !fold_constexpr_expr(expr, constant,
+                                           /*is_constant_evaluated=*/FALSE,
+                                           /*force_prvalue=*/FALSE);
+    return;
+  }  /* if */
+  if (arg2 != NULL) {
+    a_boolean ovflo = FALSE;
+    if (!is_constant_node(arg2)) {
+      *not_a_constant = TRUE;
+      return;
+    }  /* if */
+    index = value_of_integer_constant(arg2->variant.constant.ptr, &ovflo);
+    if (ovflo) {
+      *not_a_constant = TRUE;
+      return;
+    }  /* if */
+  }  /* if */
+  if (!sycl_kernel_int_value(kind, kt, index, &value, &unsupported)) {
+    if (unsupported) {
+      expr_pos_diagnostic(es_error, ec_sycl_kernel_param_unsupported,
+                          &expr->position);
+      value = SYCL_KIND_ACCESSOR_NONE;
+    } else {
+      *not_a_constant = TRUE;
+      return;
+    }  /* if */
+  }  /* if */
+  *not_a_constant = FALSE;
+  set_integer_constant(constant, value, (an_integer_kind)ik_int);
+  constant->type = expr->type;
+  (void)maintain_expression;
+}  /* fold_builtin_sycl_kernel_info */
+
+
 static void fold_builtin_sycl_unique_stable_name(an_expr_node_ptr expr,
                                                  a_constant_ptr   constant,
                                                  a_boolean        maintain_expression,
@@ -10193,15 +10460,7 @@ string encoding, see mangled_typeinfo_string).  A template-dependent type sets
     *not_a_constant = TRUE;
     return;
   }  /* if */
-  set_temporary_address_constant(
-                  shareable_fs_string_constant(mangled_typeinfo_string(type)),
-                  constant);
-  /* A string literal decays to a pointer to its first character, so the
-     constant has the decayed type (what the operation's expression type says). */
-  constant->type = make_pointer_type(make_qualified_type(
-                                        integer_type((an_integer_kind)ik_char),
-                                        (a_type_qualifier_set)TQ_CONST));
-  constant->implicit_cast = TRUE;
+  fold_sycl_string_result(mangled_typeinfo_string(type), constant);
   *not_a_constant = FALSE;
 }  /* fold_builtin_sycl_unique_stable_name */
 
@@ -10942,6 +11201,46 @@ constant is set as well.
         fold_builtin_sycl_unique_stable_name(expr, constant,
                                              maintain_expression,
                                              not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_name:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_param_count:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_param_kind:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_param_access_target:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_param_size:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_param_offset:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_file_name:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_function_name:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_line_number:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
+        break;
+      case bok_builtin_sycl_kernel_column_number:
+        fold_builtin_sycl_kernel_info(expr, constant, maintain_expression,
+                                      not_a_constant);
         break;
       case bok_is_layout_compatible:
         fold_is_layout_compatible(expr, constant, maintain_expression);

@@ -24872,6 +24872,116 @@ END_DISABLE_GCC_WARNING_MAYBE_UNITIALIZED
 }  /* do_constexpr_is_corresponding_member */
 
 
+/* SYCL kernel-info values (folding.c): the kernel object type of a KernelIdentity<K>() operand, the integer and the
+   string values of the kernel-info builtins. See docs/notes/sycl-kernel-builtins.md. */
+extern a_type_ptr sycl_kernel_of_identity(an_expr_node_ptr arg);
+extern a_boolean sycl_kernel_int_value(a_builtin_operation_kind kind, a_type_ptr kt,
+                                       a_host_large_integer index, a_host_large_integer *value,
+                                       a_boolean *unsupported);
+extern const char *sycl_kernel_string_value(a_builtin_operation_kind kind, a_type_ptr kt);
+
+
+static a_boolean do_constexpr_sycl_kernel_info(an_interpreter_state *ips,
+                                               an_expr_node_ptr     expr,
+                                               a_byte               *result_storage,
+                                               a_byte               *complete_object)
+/*
+Interpret one of the SYCL kernel-info builtins.  The string builtins (kernel name,
+file name, function name) have the class type sycl::detail::string_view, so their
+value is that object (make_reflective_string_view); without the SYCL headers the
+type is const char * and the value is the string.  The integer builtins give an
+integer, after the parameter index operand (if any) is interpreted.
+*/
+{
+  a_boolean                result = TRUE, unsupported = FALSE;
+  an_expr_node_ptr         arg1 = expr->variant.builtin_operation.operands,
+                           arg2 = arg1->next;
+  a_builtin_operation_kind kind = expr->variant.builtin_operation.kind;
+  a_type_ptr               kt = sycl_kernel_of_identity(arg1), tp;
+  a_host_large_integer     index = 0, value = 0;
+
+  if (kt == NULL || is_template_dependent_type(kt)) {
+    do_constexpr_fail(result);
+    goto done;
+  }  /* if */
+  if (kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_name ||
+      kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_file_name ||
+      kind == (a_builtin_operation_kind)bok_builtin_sycl_kernel_function_name) {
+    const char *str = sycl_kernel_string_value(kind, kt);
+
+    tp = skip_typerefs(expr->type);
+    if (is_class_or_struct(tp)) {
+      /* The string_view members: a pointer to the characters (written as build_source_location_value writes its file
+         name) and their count. */
+      a_field_ptr fp;
+      a_boolean   ptr_done = FALSE, length_done = FALSE;
+
+      for (fp = next_alloc_field(fields_of(tp)); fp != NULL && result;
+           fp = next_alloc_field(fp->next)) {
+        a_type_ptr    ftp = skip_typerefs(fp->type);
+        a_byte_count  f_offset;
+        a_byte        *f_bytes;
+
+        get_mapped_byte_count(&persistent_map, fp, f_offset);
+        f_bytes = result_storage + f_offset;
+        if (is_pointer_type(ftp) && !ptr_done) {
+          do_constexpr_write_cstring(ips, (a_const_char *)str, f_bytes, &result);
+          mark_subobject_initialized(f_bytes, complete_object);
+          ptr_done = TRUE;
+        } else if (type_is(ftp, tk_integer) && !length_done) {
+          set_integer_value((an_integer_value*)f_bytes,
+                            (a_host_large_integer)strlen(str));
+          mark_subobject_initialized(f_bytes, complete_object);
+          length_done = TRUE;
+        } else {
+          do_constexpr_fail(result);
+        }  /* if */
+      }  /* for */
+      if (result && ptr_done && length_done) {
+        mark_subobject_initialized(result_storage, complete_object);
+        record_complete_object_type(tp, complete_object);
+      } else {
+        do_constexpr_fail(result);
+      }  /* if */
+    } else {
+      do_constexpr_write_cstring(ips, (a_const_char *)str, result_storage, &result);
+    }  /* if */
+    goto done;
+  }  /* if */
+  if (arg2 != NULL) {
+    a_type_ptr    itp = skip_typerefs(arg2->type);
+    a_byte_count  n_bytes = expr_result_size(ips, arg2, itp, &result);
+    a_byte        *idx_bytes;
+
+    if (!result) goto done;
+    do_host_alignment(&n_bytes);
+    if (alloc_complete_object(ips, n_bytes, itp, idx_bytes) &&
+        do_constexpr_expression(ips, arg2, idx_bytes, idx_bytes)) {
+      a_boolean ovflo = FALSE;
+      index = value_of_integer_value((an_integer_value*)idx_bytes,
+                                     /*is_signed=*/TRUE, &ovflo);
+      if (ovflo) {
+        do_constexpr_fail(result);
+        goto done;
+      }  /* if */
+    } else {
+      do_constexpr_fail(result);
+      goto done;
+    }  /* if */
+  }  /* if */
+  if (!sycl_kernel_int_value(kind, kt, index, &value, &unsupported)) {
+    if (unsupported) {
+      info_with_pos(ec_sycl_kernel_param_unsupported, &expr->position, ips);
+    }  /* if */
+    do_constexpr_fail(result);
+    goto done;
+  }  /* if */
+  set_integer_value((an_integer_value*)result_storage, value);
+done:
+  return result;
+}  /* do_constexpr_sycl_kernel_info */
+
+
 static a_boolean do_constexpr_builtin_operation(
                                        an_interpreter_state  *ips,
                                        an_expr_node_ptr      orig_expr,
@@ -24925,6 +25035,19 @@ storage within the given complete object).  Otherwise, return FALSE and update
     case bok_builtin_is_corresponding_member:
       result = do_constexpr_is_corresponding_member(ips, expr, result_storage,
                                                     complete_object);
+      break;
+    case bok_builtin_sycl_kernel_name:
+    case bok_builtin_sycl_kernel_param_count:
+    case bok_builtin_sycl_kernel_param_kind:
+    case bok_builtin_sycl_kernel_param_access_target:
+    case bok_builtin_sycl_kernel_param_size:
+    case bok_builtin_sycl_kernel_param_offset:
+    case bok_builtin_sycl_kernel_file_name:
+    case bok_builtin_sycl_kernel_function_name:
+    case bok_builtin_sycl_kernel_line_number:
+    case bok_builtin_sycl_kernel_column_number:
+      result = do_constexpr_sycl_kernel_info(ips, expr, result_storage,
+                                             complete_object);
       break;
     default:
       do_constexpr_fail(result);

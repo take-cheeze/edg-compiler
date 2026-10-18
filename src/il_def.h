@@ -1584,6 +1584,16 @@ enum a_token_kind : unsigned short {
   tok_builtin_ge_synthesizes_from_spaceship,
   tok_builtin_is_structural,
   tok_builtin_sycl_unique_stable_name,
+  tok_builtin_sycl_kernel_name,
+  tok_builtin_sycl_kernel_param_count,
+  tok_builtin_sycl_kernel_param_kind,
+  tok_builtin_sycl_kernel_param_access_target,
+  tok_builtin_sycl_kernel_param_size,
+  tok_builtin_sycl_kernel_param_offset,
+  tok_builtin_sycl_kernel_file_name,
+  tok_builtin_sycl_kernel_function_name,
+  tok_builtin_sycl_kernel_line_number,
+  tok_builtin_sycl_kernel_column_number,
   tok_cuda_launch_open      /* <<< (CUDA mode only) */,
   tok_cuda_launch_close     /* >>> closing a pending <<< (CUDA mode only) */,
   /* Placeholder for last position in enumeration. */
@@ -1857,6 +1867,16 @@ EXTERN_CONSTINIT_ARRAY(a_const_char*, token_names, tok_last + 1)
    "__builtin_ge_synthesizes_from_spaceship",
    "__builtin_is_structural",
    "__builtin_sycl_unique_stable_name",
+   "__builtin_sycl_kernel_name",
+   "__builtin_sycl_kernel_param_count",
+   "__builtin_sycl_kernel_param_kind",
+   "__builtin_sycl_kernel_param_access_target",
+   "__builtin_sycl_kernel_param_size",
+   "__builtin_sycl_kernel_param_offset",
+   "__builtin_sycl_kernel_file_name",
+   "__builtin_sycl_kernel_function_name",
+   "__builtin_sycl_kernel_line_number",
+   "__builtin_sycl_kernel_column_number",
    "<<<",
    ">>>",
    "last" /* used to check that initialization is right. */
@@ -14592,6 +14612,16 @@ enum a_builtin_operation_kind : a_byte {
 			   support, see docs/notes/sycl-kernel-builtins.md).
 			   One type operand; folds to a const char pointer to
 			   the mangled name of the type. */
+  bok_builtin_sycl_kernel_name,
+  bok_builtin_sycl_kernel_param_count,
+  bok_builtin_sycl_kernel_param_kind,
+  bok_builtin_sycl_kernel_param_access_target,
+  bok_builtin_sycl_kernel_param_size,
+  bok_builtin_sycl_kernel_param_offset,
+  bok_builtin_sycl_kernel_file_name,
+  bok_builtin_sycl_kernel_function_name,
+  bok_builtin_sycl_kernel_line_number,
+  bok_builtin_sycl_kernel_column_number,
   bok_last              /* Marks the end of the list. */
 };
 
@@ -19320,6 +19350,16 @@ EXTERN_CONSTINIT_ARRAY(a_const_char*, builtin_operation_names, bok_last + 1)
   "__builtin_ge_synthesizes_from_spaceship",
   "__builtin_is_structural",
   "__builtin_sycl_unique_stable_name",
+  "__builtin_sycl_kernel_name",
+  "__builtin_sycl_kernel_param_count",
+  "__builtin_sycl_kernel_param_kind",
+  "__builtin_sycl_kernel_param_access_target",
+  "__builtin_sycl_kernel_param_size",
+  "__builtin_sycl_kernel_param_offset",
+  "__builtin_sycl_kernel_file_name",
+  "__builtin_sycl_kernel_function_name",
+  "__builtin_sycl_kernel_line_number",
+  "__builtin_sycl_kernel_column_number",
   "last"
 }
 #endif /* VAR_INITIALIZERS */

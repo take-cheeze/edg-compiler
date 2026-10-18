@@ -1875,6 +1875,16 @@ EXTERN_CONSTINIT_ARRAY(an_opname_kind, opname_kind_for_token, tok_last + 1)
    onk_none,           /* tok_builtin_ge_synthesizes_from_spaceship */
    onk_none,           /* tok_builtin_is_structural */
    onk_none,           /* tok_builtin_sycl_unique_stable_name */
+   onk_none,           /* tok_builtin_sycl_kernel_name */
+   onk_none,           /* tok_builtin_sycl_kernel_param_count */
+   onk_none,           /* tok_builtin_sycl_kernel_param_kind */
+   onk_none,           /* tok_builtin_sycl_kernel_param_access_target */
+   onk_none,           /* tok_builtin_sycl_kernel_param_size */
+   onk_none,           /* tok_builtin_sycl_kernel_param_offset */
+   onk_none,           /* tok_builtin_sycl_kernel_file_name */
+   onk_none,           /* tok_builtin_sycl_kernel_function_name */
+   onk_none,           /* tok_builtin_sycl_kernel_line_number */
+   onk_none,           /* tok_builtin_sycl_kernel_column_number */
    onk_none,           /* tok_cuda_launch_open */
    onk_none,           /* tok_cuda_launch_close */
    onk_last            /* tok_last */
