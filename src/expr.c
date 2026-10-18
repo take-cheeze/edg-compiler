@@ -16927,6 +16927,73 @@ is returned through *result.
 
 #endif /* GNU_EXTENSIONS_ALLOWED */
 
+static void scan_builtin_sycl_unique_stable_name(an_operand *result)
+/*
+Scan the SYCL kernel-support construct
+      __builtin_sycl_unique_stable_name(<type-id>)
+(docs/notes/sycl-kernel-builtins.md).  The value is a const char pointer to the
+mangled name of the type.  The operation is folded here when the type is not
+template-dependent; otherwise it stays in the IL and is folded when the
+template is instantiated.
+*/
+{
+  a_type_ptr        type;
+  an_expr_node_ptr  arg1, expr;
+  a_source_position start_position;
+#if EXTRA_SOURCE_POSITIONS_IN_IL
+  a_source_position end_position;
+#endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
+
+  check_assertion(curr_token == tok_builtin_sycl_unique_stable_name);
+  start_position = pos_curr_token;
+  (void)get_token();
+  (void)required_token(tok_lparen, ec_exp_lparen);
+  add_matching_stop_token(tok_rparen);
+  type_name(&type);
+  arg1 = alloc_expr_node((an_expr_node_kind)enk_type_operand);
+  arg1->type = void_type();
+  arg1->variant.type_operand.type = type;
+  arg1->position = pos_curr_token;
+#if EXTRA_SOURCE_POSITIONS_IN_IL
+  end_position = end_pos_curr_token;
+#endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
+  (void)required_token(tok_rparen, ec_exp_rparen);
+  remove_matching_stop_token(tok_rparen);
+  expr = alloc_expr_node((an_expr_node_kind)enk_builtin_operation);
+  expr->type = make_pointer_type(make_qualified_type(
+                                        integer_type((an_integer_kind)ik_char),
+                                        (a_type_qualifier_set)TQ_CONST));
+  expr->position = start_position;
+  expr->variant.builtin_operation.kind =
+                     (a_builtin_operation_kind)bok_builtin_sycl_unique_stable_name;
+  expr->variant.builtin_operation.operands = arg1;
+  record_operator_position_in_expr_rescan_info(expr, &start_position,
+                                               NO_TOKEN_SEQUENCE_NUMBER,
+                                               (a_source_position *)NULL);
+  {
+    a_boolean not_a_constant = FALSE;
+    clear_operand((an_operand_kind)ok_constant, result);
+    fold_builtin_operation_if_possible(
+                     expr, &result->variant.constant,
+                     curr_expr_kind_is_one_in_which_const_exprs_are_recorded(),
+                     &start_position, &not_a_constant);
+    if (not_a_constant) {
+      make_expression_operand(expr, result);
+    } else {
+      result->type = result->variant.constant.type;
+      result->state = (an_operand_state)os_prvalue;
+    }  /* if */
+  }
+#if EXTRA_SOURCE_POSITIONS_IN_IL
+  set_operand_position(result, &start_position, &end_position,
+                       &start_position);
+#else /* !EXTRA_SOURCE_POSITIONS_IN_IL */
+  set_operand_position(result, &start_position, &start_position,
+                       &start_position);
+#endif /* EXTRA_SOURCE_POSITIONS_IN_IL */
+}  /* scan_builtin_sycl_unique_stable_name */
+
+
 static void scan_builtin_has_attribute(an_operand *result)
 /*
 Scan a GNU construct of the form
@@ -38179,6 +38246,7 @@ Return TRUE if the indicated token is one that could start an expression.
     case tok_builtin_le_synthesizes_from_spaceship:
     case tok_builtin_ge_synthesizes_from_spaceship:
     case tok_builtin_is_structural:
+    case tok_builtin_sycl_unique_stable_name:
     case tok_coroutine_yield:
     case tok_coroutine_await:
     case tok_lsplice:
@@ -45866,6 +45934,11 @@ handle_nullptr:
     case tok_builtin_has_attribute:
       /* GNU __builtin_has_attribute construct. */
       scan_builtin_has_attribute(&local_result);
+      break;
+
+    case tok_builtin_sycl_unique_stable_name:
+      /* SYCL kernel support: __builtin_sycl_unique_stable_name. */
+      scan_builtin_sycl_unique_stable_name(&local_result);
       break;
 
     case tok_builtin_bit_cast:
@@ -55037,6 +55110,9 @@ TRUE if the operator is a unary operator, FALSE otherwise.
       break;
     case bok_builtin_has_attribute:
       operator_token = tok_builtin_has_attribute;
+      break;
+    case bok_builtin_sycl_unique_stable_name:
+      operator_token = tok_builtin_sycl_unique_stable_name;
       break;
     case bok_builtin_bit_cast:
       operator_token = tok_builtin_bit_cast;

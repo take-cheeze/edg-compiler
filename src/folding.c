@@ -28,6 +28,7 @@ folding.c -- Folding routines.
 #include "exprutil.h"
 #if DO_IL_LOWERING
 #include "lower_il.h"
+#include "lower_name.h"
 #endif /* DO_IL_LOWERING */
 
 /* Conditionally open the "edg" namespace. */
@@ -10170,6 +10171,41 @@ tpck_expression variant and will point to the given expression.
 }  /* fold_edg_is_deducible */
 
 
+static void fold_builtin_sycl_unique_stable_name(an_expr_node_ptr expr,
+                                                 a_constant_ptr   constant,
+                                                 a_boolean        maintain_expression,
+                                                 a_boolean        *not_a_constant)
+/*
+expr is an enk_builtin_operation node for __builtin_sycl_unique_stable_name
+with one type operand.  For a type that is not template-dependent, *constant
+becomes the const char pointer to the mangled name of the type (the typeinfo
+string encoding, see mangled_typeinfo_string).  A template-dependent type sets
+*not_a_constant so that the operation is folded at instantiation.
+*/
+{
+  an_expr_node_ptr  arg = expr->variant.builtin_operation.operands;
+  a_type_ptr        type;
+
+  check_assertion(arg != NULL && arg->next == NULL &&
+                  arg->kind == (an_expr_node_kind)enk_type_operand);
+  type = arg->variant.type_operand.type;
+  if (is_template_dependent_type(type)) {
+    *not_a_constant = TRUE;
+    return;
+  }  /* if */
+  set_temporary_address_constant(
+                  shareable_fs_string_constant(mangled_typeinfo_string(type)),
+                  constant);
+  /* A string literal decays to a pointer to its first character, so the
+     constant has the decayed type (what the operation's expression type says). */
+  constant->type = make_pointer_type(make_qualified_type(
+                                        integer_type((an_integer_kind)ik_char),
+                                        (a_type_qualifier_set)TQ_CONST));
+  constant->implicit_cast = TRUE;
+  *not_a_constant = FALSE;
+}  /* fold_builtin_sycl_unique_stable_name */
+
+
 static void fold_builtin_has_attribute(an_expr_node_ptr   expr,
                                        a_constant_ptr     constant,
                                        a_boolean          maintain_expression)
@@ -10901,6 +10937,11 @@ constant is set as well.
         break;
       case bok_builtin_has_attribute:
         fold_builtin_has_attribute(expr, constant, maintain_expression);
+        break;
+      case bok_builtin_sycl_unique_stable_name:
+        fold_builtin_sycl_unique_stable_name(expr, constant,
+                                             maintain_expression,
+                                             not_a_constant);
         break;
       case bok_is_layout_compatible:
         fold_is_layout_compatible(expr, constant, maintain_expression);
