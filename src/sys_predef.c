@@ -1490,6 +1490,17 @@ as keywords and __has_builtin returns TRUE for these.
 }  /* builtin_function_or_keyword_is_enabled */
 
 
+static a_boolean sycl_unnamed_lambda_defined(void)
+/* TRUE when the translation unit defines __SYCL_UNNAMED_LAMBDA__ (command line or source), as the SYCL pass does. */
+{
+  a_symbol_locator loc;
+
+  clear_locator(&loc, &null_source_position);
+  return find_macro_symbol_by_name("__SYCL_UNNAMED_LAMBDA__",
+                                   (sizeof_t)strlen("__SYCL_UNNAMED_LAMBDA__"), &loc) != NULL;
+}  /* sycl_unnamed_lambda_defined */
+
+
 static void preload_builtin_symbol(
                            a_const_char                 *builtin_name,
                            unsigned short               cond_index,
@@ -3298,8 +3309,9 @@ Enter predeclared symbols as required by the implementation.
 #endif /* BUILTIN_FUNCTIONS_ENABLED */
   if (variadic_templates_enabled) {
     if ((microsoft_mode && microsoft_version >= 1900) ||
-         clang_mode) {
-      /* Create an alias template for "__make_integer_seq". */
+         clang_mode || sycl_unnamed_lambda_defined()) {
+      /* Create an alias template for "__make_integer_seq".  The SYCL pass (__SYCL_UNNAMED_LAMBDA__, as the real
+         toolchain defines it) needs it for <sycl/detail/kernel_desc.hpp>; other GNU-mode translation units are unchanged. */
       make_make_integer_seq_internal_template();
     }  /* if */
     if (clangcpp_version_is(>=30900) || gnu_version_is(>=140000)) {
