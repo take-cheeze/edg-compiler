@@ -10234,7 +10234,7 @@ class template specialization.
   if (!is_type_templ_arg(tap)) {
     return NULL;
   }  /* if */
-  return tap->variant.type;
+  return skip_typerefs(tap->variant.type);
 }  /* sycl_kernel_of_identity */
 
 
