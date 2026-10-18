@@ -29,6 +29,13 @@ endif()
 add_executable(edg_munch edg_munch.c)
 add_executable(edg_prelink edg_prelink.c decode.c)
 add_executable(edg_decode edg_decode.c decode.c)
+# NFCXX_DECODE_IA64_ABI: build the prelinker's demangler (decode.c) with IA64_ABI=1. Without it, the Linux configuration
+# leaves IA64_ABI at 0 (defines.h), and the demangler decodes no Itanium names, so the prelinker cannot see template
+# instances in libc++ names. Off by default; nfcxx's cross setup turns it on.
+option(NFCXX_DECODE_IA64_ABI "Build edg_prelink and edg_decode with IA64_ABI=1" OFF)
+if(NFCXX_DECODE_IA64_ABI)
+  add_compile_definitions(IA64_ABI=1)
+endif()
 add_executable(mk_errinfo mk_errinfo.c)
 add_executable(dettarg dettarg.c)
 
