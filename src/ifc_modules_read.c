@@ -16497,8 +16497,22 @@ no corresponding type, return an error type.
             }
             break;
           case ifc_tbs_float:
-            check_assertion(precision == ifc_tps_default);
-            result = float_type((a_float_kind)fk_float);
+            switch (precision) {
+              case ifc_tps_default:
+                result = float_type((a_float_kind)fk_float);
+                break;
+              case ifc_tps_bit16:
+                /* _Float16 and __fp16 share one form; the writer gives __fp16
+                   the plain sign (see enter_float_type). */
+                result = float_type((a_float_kind)(sign == ifc_tss_plain ?
+                                                   fk_fp16 : fk_float16));
+                break;
+              case ifc_tps_bit128:
+                result = float_type((a_float_kind)fk_float128);
+                break;
+              default:
+                unexpected_condition();
+            }  /* switch */
             break;
           case ifc_tbs_double:
             if (precision == ifc_tps_long) {
