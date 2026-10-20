@@ -1645,6 +1645,7 @@ process_option()
          --no_display_error_number | \
          --dollar | \
 	 --old_line_commands | \
+	 --nfcxx_eh_unwind | \
 	 --microsoft | \
 	 --no_microsoft | \
 	 --microsoft_bugs | \

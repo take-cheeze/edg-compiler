@@ -4787,6 +4787,7 @@ the caller to do insertion after the code inserted.
   /* Create the local variable for the stack frame. */
   *stack_frame_var = local_frame =
                             make_lowered_temporary(make_eh_stack_entry_type());
+  local_frame->eh_function_frame = (kind == (an_eh_stack_entry_kind)ehsek_function);
   /* Add code as follows:
        local_frame.next = __curr_eh_stack_entry;
        __curr_eh_stack_entry = &local_frame;
@@ -4840,6 +4841,23 @@ inserted at *insert_location.
     assign_to_eh_curr_region(stack_frame_function_saved_region_number,
                              insert_location);
   }  /* if */
+#if BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE
+  /* nfcxx (--nfcxx_eh_unwind): mark a function frame as popped, so that its cleanup, which the C compiler runs when the
+     function returns (and when the system unwinder unwinds it), knows that the function returned.  The C back end
+     attaches the cleanup (c_gen_be.c); the runtime's __nfcxx_eh_frame_unwind (throw.c) tests the mark.  Adds
+     stack_frame.kind = NFCXX_EH_FRAME_POPPED (0xff, lib_src/eh.h). */
+  if (nfcxx_eh_unwind && kind == (an_eh_stack_entry_kind)ehsek_function) {
+    an_expr_node_ptr local_frame_kind;
+    local_frame_kind = field_lvalue_selection_expr(var_lvalue_expr(stack_frame),
+                                                   ehse_kind_field);
+    (void)insert_assignment_statement(
+                              local_frame_kind,
+                              (an_expr_operator_kind)eok_assign,
+                              node_for_integer_constant((long)0xff,
+                                            (an_integer_kind)ik_unsigned_char),
+                              insert_location);
+  }  /* if */
+#endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
   /* Add __curr_eh_stack_entry = local_frame.next; */
   local_frame_next = field_rvalue_selection_expr(var_lvalue_expr(stack_frame),
                                                  ehse_next_field);

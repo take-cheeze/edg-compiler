@@ -8958,6 +8958,11 @@ parameters.
       /* Emit attributes associated with this variable. */
       (void)form_variable_attributes(variable, /*need_leading_space=*/TRUE,
                                      &octl);
+      if (variable->eh_function_frame && nfcxx_eh_unwind) {
+        /* The function's exception handling frame runs its cleanups when the system unwinder unwinds the function
+           (__nfcxx_eh_frame_unwind, lib_src/throw.c; declared by nfcxx's nfcxx_eh_unwind.h). */
+        write_tok_str(" __attribute__((__cleanup__(__nfcxx_eh_frame_unwind)))");
+      }  /* if */
 #endif /* GNU_EXTENSIONS_ALLOWED */
       /* Dump the initializer if there is a constant one or if the
          variable should be initialized to zero. */

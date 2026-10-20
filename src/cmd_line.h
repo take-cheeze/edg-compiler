@@ -44,6 +44,7 @@ enum an_option_kind {
   optk_keep_comments_in_pp_output,
 #if BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE
   optk_old_line_dirs,
+  optk_nfcxx_eh_unwind,
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
   optk_C_dialect_pcc,
   optk_list_makefile_dependencies,
@@ -468,6 +469,12 @@ EXTERN_THREAD a_boolean
 			/* If TRUE, generate old-style line directives in
 			   generated C/C++ output, i.e., "# nnn" instead of
 			   "#line nnn". */
+EXTERN_THREAD a_boolean
+		nfcxx_eh_unwind;
+			/* If TRUE, the exception handling stack frame of each
+			   function carries a cleanup attribute that runs its
+			   object destructions when the system unwinder unwinds the
+			   frame (lib_src/throw.c). */
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
 EXTERN_THREAD a_boolean
 		gen_line_info_in_pp_output;
