@@ -16,6 +16,9 @@ Throw processing for exception handling.
 #include "eh.h"
 #pragma hdrstop
 #include "vec_newdel.h"
+#include <setjmp.h>
+#include <stdint.h>
+#include <unwind.h>
 
 #if EXCEPTION_HANDLING
 
@@ -1268,6 +1271,72 @@ the catch parameter has been copied.
 }  /* __exception_caught */
 
 
+/*
+nfcxx: with --nfcxx_eh_unwind (nfcxx's gcc back end) the cleanups of the functions a throw unwinds run in the system
+unwinder, not in the loop below: each function's EH stack frame has a cleanup attribute that calls
+__nfcxx_eh_frame_unwind when the frame is unwound (nfcxx_eh_unwind.h declares it and sets
+__nfcxx_eh_unwind_frames). __throw still searches the EH stack for the handler, as before. Then it forces the unwind
+with _Unwind_ForcedUnwind; the stop function returns control to __throw once the unwinder reaches the frame that holds
+the destination try block, and the rest of the throw (the partial cleanup of that frame, the catch) is done as before.
+*/
+extern int __nfcxx_eh_unwind_frames __attribute__((weak));
+static uintptr_t nfcxx_unwind_owner;
+static a_boolean nfcxx_unwind_in_progress;
+static struct _Unwind_Exception nfcxx_unwind_exception;
+
+static void nfcxx_finish_throw(void);
+
+static _Unwind_Reason_Code nfcxx_eh_unwind_stop(int version, _Unwind_Action actions,
+                                                _Unwind_Exception_Class cls, struct _Unwind_Exception *exc,
+                                                struct _Unwind_Context *context, void *arg)
+{
+  (void)version; (void)cls; (void)exc; (void)arg;
+  if (actions & _UA_END_OF_STACK) unexpected_condition();
+  /* The frame that holds the destination try block has its locals above the try block's entry; the frames below it
+     (the throw's callees) have their CFA below the entry. */
+  if ((uintptr_t)_Unwind_GetCFA(context) > (uintptr_t)nfcxx_unwind_owner) nfcxx_finish_throw();
+  return _URC_NO_REASON;
+}
+
+EXTERN_C void __nfcxx_eh_frame_unwind(void *frame)
+/*
+The cleanup of a function's EH stack frame, run when the function's scope ends: by a normal exit, or by the unwinder
+when a throw unwinds the function (only while nfcxx_unwind_in_progress).  A normal exit has already popped the frame,
+so the top of the EH stack is the frame's next entry.  When the throw unwinds the frame, the entries above it are the
+frame's own (try blocks, object entries) and those of the frames the unwinder passed without calling them; they are
+dead, and the frame is the top of the chain after they are dropped.
+*/
+{
+  an_eh_stack_entry_ptr ehsep = (an_eh_stack_entry_ptr)frame;
+  if (!nfcxx_unwind_in_progress) return;
+  /* A normal return has popped the frame and marked it (lower_eh.c: pop_eh_stack_frame).  The chain top is not a
+     reliable test: a function whose frame sits above a noexcept or throw-specification entry pops both before this
+     runs, so the top is then the entry below them. */
+  if (ehsep->kind == (an_eh_stack_entry_kind)NFCXX_EH_FRAME_POPPED) return;
+  /* The frame that holds the destination: its landing pad runs before the stop function sees its frame, so the jump
+     to the catch is made here (nfcxx_eh_unwind_stop makes it for a frame without a landing pad). */
+  if ((uintptr_t)ehsep == nfcxx_unwind_owner) nfcxx_finish_throw();
+  __curr_eh_stack_entry = ehsep;
+  cleanup(ehsep, __eh_curr_region, NULL_REGION_NUMBER);
+  __eh_curr_region = ehsep->variant.function.saved_region_number;
+  ehsep->kind = (an_eh_stack_entry_kind)NFCXX_EH_FRAME_POPPED;
+  __curr_eh_stack_entry = ehsep->next;
+}  /* __nfcxx_eh_frame_unwind */
+
+/* The state of the throw in progress that nfcxx_finish_throw reads (set by __throw). */
+static an_eh_stack_entry_ptr destination_ehsep;
+static int destination_catch_value;
+static void *object_ptr;
+static void *object_buffer_ptr;
+static a_type_info_impl_ptr thrown_type_info;
+static an_ETS_flag_set throw_flags;
+static an_ETS_flag_set *throw_ptr_flags;
+static an_exception_type_specification_ptr etsp_found;
+static a_boolean nullptr_conv_needed;
+static an_access_flag_string access_flags;
+static a_boolean use_access_flags;
+static void nfcxx_finish_throw(void);
+
 EXTERN_C void __throw(void)
 /*
 Process a throw.  This routine looks through the stack entries for
@@ -1275,22 +1344,14 @@ a try block with a catch that matches the type of the object thrown.
 */
 {
   an_eh_stack_entry_ptr		ehsep;
-  an_eh_stack_entry_ptr		destination_ehsep = NULL;
 #if !UNWIND_STACK_BEFORE_CALLING_TERMINATE
   an_eh_stack_entry_ptr		non_internal_destination_ehsep = NULL;
 #endif /* !UNWIND_STACK_BEFORE_CALLING_TERMINATE */
-  int				destination_catch_value;
-  void*				object_ptr;
-  void*				object_buffer_ptr;
-  a_type_info_impl_ptr		thrown_type_info;
-  an_ETS_flag_set		throw_flags;
-  an_ETS_flag_set		*throw_ptr_flags;
-  an_exception_type_specification_ptr
-				etsp_found = NULL;
-  a_boolean			nullptr_conv_needed = FALSE;
-  an_access_flag_string         access_flags;
-  a_boolean			use_access_flags;
+  a_boolean			use_unwinder = FALSE;
 
+  destination_ehsep = NULL;
+  etsp_found = NULL;
+  nullptr_conv_needed = FALSE;
   if (!curr_throw_stack_entry->object_evaluation_complete) {
     /* If the __exception_started routine was not explicitly called by the
        code generated at the throw site, call it now. */
@@ -1455,7 +1516,12 @@ a try block with a catch that matches the type of the object thrown.
     __call_terminate();
   }  /* if */
 #endif /* !UNWIND_STACK_BEFORE_CALLING_TERMINATE */
-  /* Go through the EH stack again and do any necessary cleanup. */
+  /* Go through the EH stack again and do any necessary cleanup.  With the unwinder doing the function frames (see
+     __nfcxx_eh_frame_unwind above), only the other entries are processed here. */
+  use_unwinder = (&__nfcxx_eh_unwind_frames != NULL && __nfcxx_eh_unwind_frames) &&
+                 destination_ehsep != NULL &&
+                 (destination_ehsep->kind == (an_eh_stack_entry_kind)ehsek_old_try_block ||
+                  destination_ehsep->kind == (an_eh_stack_entry_kind)ehsek_try_block);
   ehsep = __curr_eh_stack_entry;
   /* Skip past the throw marker entry. */
   ehsep = ehsep->next;
@@ -1471,8 +1537,10 @@ a try block with a catch that matches the type of the object thrown.
      }  /* if */
 #endif /* DEBUG */
     if (kind == (an_eh_stack_entry_kind)ehsek_function) {
-      cleanup(ehsep, __eh_curr_region, NULL_REGION_NUMBER);
-      __eh_curr_region = ehsep->variant.function.saved_region_number;
+      if (!use_unwinder) {
+        cleanup(ehsep, __eh_curr_region, NULL_REGION_NUMBER);
+        __eh_curr_region = ehsep->variant.function.saved_region_number;
+      }  /* if */
     } else if (kind == (an_eh_stack_entry_kind)ehsek_vec_new_or_delete) {
       /* A vec_new or vec_delete operation that was in process when the
          exception occurred.  Call the routine to cleanup the partially
@@ -1532,6 +1600,37 @@ a try block with a catch that matches the type of the object thrown.
     __call_terminate();
   }  /* if */
 #endif /* UNWIND_STACK_BEFORE_CALLING_TERMINATE */
+  if (use_unwinder) {
+    /* The unwinder runs the cleanups of the frames up to the one that holds the destination try block.  The frame's
+       landing pad (or nfcxx_eh_unwind_stop, for a frame without one) then calls nfcxx_finish_throw, which jumps to the
+       try block.  Nothing after the unwind runs in this frame: the unwinder's frames overwrite the frames it passes. */
+    {
+      /* The function entry of the frame that holds the destination (the entry after it on the EH stack, as the partial
+         cleanup finds it).  It lies in that frame; the frames the throw unwinds have their CFA at or below it. */
+      an_eh_stack_entry_ptr function_ehsep = destination_ehsep->next;
+      while (function_ehsep->kind != (an_eh_stack_entry_kind)ehsek_function) function_ehsep = function_ehsep->next;
+      nfcxx_unwind_owner = (uintptr_t)function_ehsep;
+    }
+    nfcxx_unwind_in_progress = TRUE;
+    nfcxx_unwind_exception.exception_class = 0x4e46435858000000ull;
+    nfcxx_unwind_exception.exception_cleanup = NULL;
+    (void)_Unwind_ForcedUnwind(&nfcxx_unwind_exception, nfcxx_eh_unwind_stop, NULL);
+    /* The unwinder returns only at the end of the stack, which nfcxx_eh_unwind_stop reports. */
+    unexpected_condition();
+  }  /* if */
+  nfcxx_finish_throw();
+}  /* __throw */
+
+static void nfcxx_finish_throw(void)
+/*
+The rest of the throw, once the EH stack has been searched and the frames above the destination have been cleaned up:
+the partial cleanup of the destination's frame, the catch clause's entry.  It does not return to its caller when the
+destination is a try block.
+*/
+{
+  nfcxx_unwind_in_progress = FALSE;
+  /* Entries of frames the unwinder passed without calling their cleanups may still lie above the throw marker. */
+  __curr_eh_stack_entry = &curr_throw_stack_entry->throw_marker;
   if (destination_ehsep->kind == (an_eh_stack_entry_kind)ehsek_old_try_block ||
       destination_ehsep->kind == (an_eh_stack_entry_kind)ehsek_try_block) {
     /* A try block may have objects that must be cleaned up before
@@ -1653,7 +1752,7 @@ a try block with a catch that matches the type of the object thrown.
     __curr_eh_stack_entry = __curr_eh_stack_entry->next;
     __call_terminate();
   }  /* if */
-}  /* __throw */
+}  /* nfcxx_finish_throw */
 
 
 static void push_throw_stack(a_type_info_impl_ptr    type_info,

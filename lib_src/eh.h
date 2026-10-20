@@ -342,6 +342,10 @@ enum an_eh_stack_entry_kind : a_byte {
   ehsek_noexcept
 };
 
+/* nfcxx (--nfcxx_eh_unwind): the kind that a function's frame gets when its normal return pops it (lower_eh.c), so the
+   cleanup of the frame (__nfcxx_eh_frame_unwind, throw.c) can tell a return from the unwinder.  No live entry has it. */
+#define NFCXX_EH_FRAME_POPPED 0xff
+
 
 typedef struct an_eh_stack_entry *an_eh_stack_entry_ptr;
 typedef struct an_eh_stack_entry {
