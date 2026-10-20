@@ -18,7 +18,14 @@ Throw processing for exception handling.
 #include "vec_newdel.h"
 #include <setjmp.h>
 #include <stdint.h>
+/* nfcxx: the system unwinder (--nfcxx_eh_unwind) is used where the host has unwind.h (the Linux runtime).  The macOS
+   runtime (the cross target, built against the clean-room headers) does not, and does not use the unwinder. */
+#if defined(__has_include) && __has_include(<unwind.h>)
+#define NFCXX_EH_UNWIND_RUNTIME 1
 #include <unwind.h>
+#else
+#define NFCXX_EH_UNWIND_RUNTIME 0
+#endif
 
 #if EXCEPTION_HANDLING
 
@@ -1282,10 +1289,13 @@ the destination try block, and the rest of the throw (the partial cleanup of tha
 extern int __nfcxx_eh_unwind_frames __attribute__((weak));
 static uintptr_t nfcxx_unwind_owner;
 static a_boolean nfcxx_unwind_in_progress;
+#if NFCXX_EH_UNWIND_RUNTIME
 static struct _Unwind_Exception nfcxx_unwind_exception;
+#endif /* NFCXX_EH_UNWIND_RUNTIME */
 
 static void nfcxx_finish_throw(void);
 
+#if NFCXX_EH_UNWIND_RUNTIME
 static _Unwind_Reason_Code nfcxx_eh_unwind_stop(int version, _Unwind_Action actions,
                                                 _Unwind_Exception_Class cls, struct _Unwind_Exception *exc,
                                                 struct _Unwind_Context *context, void *arg)
@@ -1297,6 +1307,7 @@ static _Unwind_Reason_Code nfcxx_eh_unwind_stop(int version, _Unwind_Action acti
   if ((uintptr_t)_Unwind_GetCFA(context) > (uintptr_t)nfcxx_unwind_owner) nfcxx_finish_throw();
   return _URC_NO_REASON;
 }
+#endif /* NFCXX_EH_UNWIND_RUNTIME */
 
 EXTERN_C void __nfcxx_eh_frame_unwind(void *frame)
 /*
@@ -1518,7 +1529,8 @@ a try block with a catch that matches the type of the object thrown.
 #endif /* !UNWIND_STACK_BEFORE_CALLING_TERMINATE */
   /* Go through the EH stack again and do any necessary cleanup.  With the unwinder doing the function frames (see
      __nfcxx_eh_frame_unwind above), only the other entries are processed here. */
-  use_unwinder = (&__nfcxx_eh_unwind_frames != NULL && __nfcxx_eh_unwind_frames) &&
+  use_unwinder = NFCXX_EH_UNWIND_RUNTIME &&
+                 (&__nfcxx_eh_unwind_frames != NULL && __nfcxx_eh_unwind_frames) &&
                  destination_ehsep != NULL &&
                  (destination_ehsep->kind == (an_eh_stack_entry_kind)ehsek_old_try_block ||
                   destination_ehsep->kind == (an_eh_stack_entry_kind)ehsek_try_block);
@@ -1611,12 +1623,14 @@ a try block with a catch that matches the type of the object thrown.
       while (function_ehsep->kind != (an_eh_stack_entry_kind)ehsek_function) function_ehsep = function_ehsep->next;
       nfcxx_unwind_owner = (uintptr_t)function_ehsep;
     }
+#if NFCXX_EH_UNWIND_RUNTIME
     nfcxx_unwind_in_progress = TRUE;
     nfcxx_unwind_exception.exception_class = 0x4e46435858000000ull;
     nfcxx_unwind_exception.exception_cleanup = NULL;
     (void)_Unwind_ForcedUnwind(&nfcxx_unwind_exception, nfcxx_eh_unwind_stop, NULL);
     /* The unwinder returns only at the end of the stack, which nfcxx_eh_unwind_stop reports. */
     unexpected_condition();
+#endif /* NFCXX_EH_UNWIND_RUNTIME */
   }  /* if */
   nfcxx_finish_throw();
 }  /* __throw */
