@@ -1286,7 +1286,10 @@ __nfcxx_eh_unwind_frames). __throw still searches the EH stack for the handler, 
 with _Unwind_ForcedUnwind; the stop function returns control to __throw once the unwinder reaches the frame that holds
 the destination try block, and the rest of the throw (the partial cleanup of that frame, the catch) is done as before.
 */
-extern int __nfcxx_eh_unwind_frames __attribute__((weak));
+/* A weak definition, not an extern weak declaration: Apple's linker makes an undefined extern weak reference a hard
+   error, and a program built with nfcxx_eh_unwind.h defines the flag (weakly, as 1) in its own object, which the
+   linker takes ahead of this one. */
+int __nfcxx_eh_unwind_frames __attribute__((weak)) = 0;
 static uintptr_t nfcxx_unwind_owner;
 static a_boolean nfcxx_unwind_in_progress;
 #if NFCXX_EH_UNWIND_RUNTIME
