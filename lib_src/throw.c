@@ -1312,6 +1312,17 @@ static _Unwind_Reason_Code nfcxx_eh_unwind_stop(int version, _Unwind_Action acti
 }
 #endif /* NFCXX_EH_UNWIND_RUNTIME */
 
+/* The exception object of the throw in progress, for a landing pad of cproc's cleanup lowering (qbe.c, ehcleanupobj):
+   the pad calls the cleanup, then _Unwind_Resume with this object. */
+EXTERN_C struct _Unwind_Exception *__nfcxx_eh_unwind_exc(void)
+{
+#if NFCXX_EH_UNWIND_RUNTIME
+  return &nfcxx_unwind_exception;
+#else
+  return NULL;
+#endif /* NFCXX_EH_UNWIND_RUNTIME */
+}  /* __nfcxx_eh_unwind_exc */
+
 EXTERN_C void __nfcxx_eh_frame_unwind(void *frame)
 /*
 The cleanup of a function's EH stack frame, run when the function's scope ends: by a normal exit, or by the unwinder
