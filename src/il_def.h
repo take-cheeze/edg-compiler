@@ -11393,12 +11393,12 @@ typedef struct a_variable {
 			/* TRUE if the name field of asm_name_or_reg
 			   is valid; FALSE if the reg field is valid. */
 #endif /* GNU_EXTENSIONS_ALLOWED || REDEFINE_EXTNAME_PRAGMA_ENABLED */
-#if NAMED_REGISTERS_ALLOWED
-  a_bit_field   has_named_register_storage_class:1;
   a_bit_field   eh_function_frame:1;
 			/* TRUE if this is the exception handling stack frame of a
 			   function (lower_eh.c); the C back end attaches a cleanup
 			   attribute to it under --nfcxx_eh_unwind. */
+#if NAMED_REGISTERS_ALLOWED
+  a_bit_field   has_named_register_storage_class:1;
 			/* TRUE if the id field of asm_name_or_reg is
 			   valid, which indicates that the variable was
 			   declared with an Embedded C (TR 18037) named
