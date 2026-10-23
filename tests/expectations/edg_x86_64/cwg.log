@@ -34,7 +34,6 @@ cwg1992.sft.cpp:rp:-DTEST_NUMBER=1:FAIL:
 cwg2004.sft.cpp:fn:-DTEST_NUMBER=1:FAIL:
 cwg2024.sft.cpp:fp:-DTEST_NUMBER=1:FAIL:
 cwg2065b.sft.cpp:fn:-DTEST_NUMBER=1:FAIL:
-cwg2082b.sft.cpp:fp:-DTEST_NUMBER=1:FAIL:
 cwg2085/test.mft.cpp:fn:-DTEST_NUMBER=1:FAIL:
 cwg2088.sft.cpp:fp:-DTEST_NUMBER=1:FAIL:
 cwg2165e.sft.cpp:fp:-DTEST_NUMBER=1:FAIL:
