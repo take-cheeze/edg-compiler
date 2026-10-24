@@ -14004,6 +14004,13 @@ the name in the variable entry.
     /* The variable should not be unnamed. */
     check_assertion(mangled_name != NULL);
   } else {
+    /* The implicit abi_tags are part of the name (std::string gives
+       "B5cxx11").  They are computed when the variable itself is mangled;
+       a name made from this one earlier (the _ZTH and _ZTW routines of an
+       extern thread_local, which are created before the variable is
+       mangled when this translation unit only declares it) must include
+       them too, or it misses the routines that other units define. */
+    (void)variable_name_mangling_needed(variable);
     /* Generate the mangled name in a buffer. */
     start_mangling(&mctl, variable->is_prototype_instantiation);
     add_mangled_name_prefix(&mctl);
