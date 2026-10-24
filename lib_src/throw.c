@@ -2373,6 +2373,113 @@ Throw the exception that handle refers to again.
   __throw();
 }  /* __eh_rethrow_pinned */
 
+
+EXTERN_C void __eh_throw_detached(void* handle)
+/*
+Throw the object of a detached entry made by __eh_make_detached, as a rethrow
+of it, passing the caller's reference on to the throw: the object lives until
+its last handler ends.  The nfcxx EH shim throws an exception of gcc-compiled
+code (__cxa_throw) this way; holding the reference in a local object instead
+would give the throwing frame an EH stack entry, which the system unwinder
+(--nfcxx_eh_unwind) passes over when that frame has no landing pad.
+*/
+{
+  a_throw_stack_entry_ptr	primary = (a_throw_stack_entry_ptr)handle;
+
+  push_throw_stack(primary->type_info,
+                   primary->destructor,
+                   primary->flags,
+                   primary->ptr_flags,
+                   primary->access_flags,
+                   primary->use_access_flags,
+                   primary->object_address,
+                   /*is_rethrow=*/TRUE,
+                   /*is_internal=*/FALSE,
+                   primary);
+  /* push_throw_stack took a reference for the rethrow entry. */
+  check_assertion(primary->use_count > 1);
+  primary->use_count--;
+  __throw();
+}  /* __eh_throw_detached */
+
+
+EXTERN_C void* __eh_find_destination(a_type_info_impl_ptr	type_info,
+				     an_ETS_flag_set		flags,
+				     void*			object_address)
+/*
+Return the EH stack entry at which a throw of the object at object_address
+(for a pointer type, the address of storage holding the pointer; type_info
+and flags as for __throw_setup, without pointer levels) would stop if it were
+thrown now: the try block whose handler is chosen, or the violated throw
+specification, noexcept entry or throw processing marker (which end in
+unexpected or terminate).  Return NULL when no handler would be found, so
+that the throw would call terminate.  This is the first pass of __throw
+without its side effects.  The nfcxx EH shim uses it to decide whether an
+exception thrown by gcc-compiled code (__cxa_throw) goes to a handler of
+EDG-compiled code.
+*/
+{
+  an_eh_stack_entry_ptr			ehsep;
+  an_eh_stack_entry_ptr			destination = NULL;
+  a_boolean				handler_found = FALSE;
+  an_exception_type_specification_ptr	etsp;
+  void*					object_ptr;
+
+  for (ehsep = __curr_eh_stack_entry; ehsep != NULL; ehsep = ehsep->next) {
+    an_eh_stack_entry_kind	kind = ehsep->kind;
+    if (kind == (an_eh_stack_entry_kind)ehsek_old_try_block ||
+        kind == (an_eh_stack_entry_kind)ehsek_try_block) {
+      /* Try blocks for which a catch is active do not handle the throw. */
+      if (ehsep->variant.try_block.catch_info == NULL) {
+        int	result = 1;  /* An internal try block is a "catch (...)". */
+        if (ehsep->variant.try_block.catch_entries != NULL) {
+          /* The derived-to-base conversion adjusts the pointer: work on a
+             copy. */
+          object_ptr = is_pointer(flags, (an_ETS_flag_set*)NULL) ?
+                                      *(void**)object_address : object_address;
+          result = check_exception_type_specifications
+				(ehsep->variant.try_block.catch_entries,
+				 type_info, flags, (an_ETS_flag_set*)NULL,
+				 (an_access_flag_string)NULL,
+				 /*use_access_flags=*/FALSE, &object_ptr, &etsp,
+				 (a_boolean*)NULL);
+        }  /* if */
+        if (result != 0) {
+          if (destination == NULL) destination = ehsep;
+          if (ehsep->variant.try_block.catch_entries != NULL) {
+            /* A normal (not internal) try block: the throw is handled. */
+            handler_found = TRUE;
+            break;
+          }  /* if */
+        }  /* if */
+      }  /* if */
+    } else if (destination != NULL) {
+      /* As in __throw, only try blocks count after the first match. */
+    } else if (kind == (an_eh_stack_entry_kind)ehsek_throw_spec) {
+      int	result = 0;
+      if (ehsep->variant.throw_specification != NULL) {
+        result = check_exception_type_specifications
+				  (ehsep->variant.throw_specification,
+				   type_info, flags, (an_ETS_flag_set*)NULL,
+				   (an_access_flag_string)NULL,
+				   /*use_access_flags=*/FALSE, (void**)NULL,
+				   &etsp, (a_boolean*)NULL);
+      }  /* if */
+      if (result == 0) {
+        destination = ehsep;
+        handler_found = TRUE;
+        break;
+      }  /* if */
+    } else if (kind == (an_eh_stack_entry_kind)ehsek_noexcept ||
+               kind == (an_eh_stack_entry_kind)ehsek_throw_processing_marker) {
+      destination = ehsep;
+      handler_found = TRUE;
+      break;
+    }  /* if */
+  }  /* for */
+  return handler_found ? (void*)destination : NULL;
+}  /* __eh_find_destination */
+
 #else /* !EXCEPTION_HANDLING */
 
 EXTERN_C void __eh_exit_processing(void)
