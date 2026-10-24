@@ -24822,6 +24822,119 @@ members.
 }  /* check_defaulted_members */
 
 
+static int copy_or_move_ctor_kind(a_symbol_ptr          sym,
+                                  a_type_ptr            class_type,
+                                  a_type_qualifier_set  *qualifiers)
+/*
+Return 1 if sym is a (non-template) copy constructor of class_type, 2 if it is
+a move constructor, and 0 otherwise.  For a copy constructor, *qualifiers is
+set to the qualifiers of its first parameter; for a move constructor, to 0.
+*/
+{
+  int            result = 0;
+  a_routine_ptr  rp;
+
+  *qualifiers = 0;
+  if (symbol_is(sym, sk_member_function)) {
+    rp = sym->variant.routine.ptr;
+    if (is_copy_constructor(rp, class_type, qualifiers,
+                            /*include_move_ctors=*/FALSE,
+                            /*is_declarative_context=*/TRUE)) {
+      result = 1;
+    } else if (routine_is_move_constructor(rp)) {
+      *qualifiers = 0;
+      result = 2;
+    }  /* if */
+  }  /* if */
+  return result;
+}  /* copy_or_move_ctor_kind */
+
+
+static a_boolean copy_or_move_ctor_is_eligible(a_symbol_ptr  sym,
+                                               a_symbol_ptr  first_ctor,
+                                               a_type_ptr    class_type)
+/*
+Return TRUE if the copy or move constructor sym is eligible (C++20
+[special]/6): its trailing requires-clause, if any, is satisfied, and no other
+satisfied constructor of the same kind and first parameter type is more
+constrained.  first_ctor is the head of the class's constructor overload list,
+or NULL when the class has only one constructor.
+*/
+{
+  a_boolean             result = TRUE;
+  a_routine_ptr         rp = sym->variant.routine.ptr;
+  a_symbol_ptr          other;
+  a_type_qualifier_set  quals, other_quals;
+  int                   kind;
+
+  if (is_ineligible(sym)) {
+    result = FALSE;
+  } else if (rp->assoc_template != NULL) {
+    kind = copy_or_move_ctor_kind(sym, class_type, &quals);
+    for (other = first_ctor; other != NULL && result; other = other->next) {
+      a_routine_ptr  orp;
+      if (other == sym ||
+          copy_or_move_ctor_kind(other, class_type, &other_quals) != kind ||
+          other_quals != quals) {
+        continue;
+      }  /* if */
+      orp = other->variant.routine.ptr;
+      if (orp->assoc_template != NULL && !is_ineligible(other) &&
+          compare_constraints(symbol_for(rp->assoc_template),
+                              symbol_for(orp->assoc_template)) == -1) {
+        /* The other constructor is more constrained. */
+        result = FALSE;
+      }  /* if */
+    }  /* for */
+  }  /* if */
+  return result;
+}  /* copy_or_move_ctor_is_eligible */
+
+
+static void discount_ineligible_copy_and_move_ctors(
+                                     a_type_ptr                     class_type,
+                                     a_class_symbol_supplement_ptr  cssp)
+/*
+Only the eligible copy and move constructors decide whether copying a class is
+trivial (C++20, P0848R3).  has_user_provided_copy_constructor and
+has_user_provided_move_constructor are set for every user-provided one as it is
+declared (check_member_decl_is_copy_constructor), including a constrained one
+whose constraint is not satisfied and an unconstrained one beside a satisfied
+constrained one.  Recompute them from the eligible constructors.  libstdc++'s
+std::optional<T> (C++20) pairs a user-provided copy constructor with
+"requires is_trivially_copy_constructible_v<T> = default"; for an int T, g++
+copies it bitwise and returns it in registers, so the IA-64 ABI needs the same
+answer here (type_returned_by_cctor).
+*/
+{
+  a_symbol_ptr          ctors = cssp->constructor, sym, list = NULL;
+  a_boolean             any_copy = FALSE, any_move = FALSE;
+  a_type_qualifier_set  quals;
+
+  if (ctors != NULL && symbol_is(ctors, sk_overloaded_function)) {
+    list = ctors = ctors->variant.overloaded_function.symbols;
+  }  /* if */
+  for (sym = ctors; sym != NULL; sym = (list != NULL ? sym->next : NULL)) {
+    a_routine_ptr  rp;
+    int            kind = copy_or_move_ctor_kind(sym, class_type, &quals);
+    if (kind == 0) continue;
+    rp = sym->variant.routine.ptr;
+    if (rp->compiler_generated || rp->is_defaulted || rp->is_deleted) {
+      continue;
+    }  /* if */
+    if (copy_or_move_ctor_is_eligible(sym, list, class_type)) {
+      if (kind == 1) {
+        any_copy = TRUE;
+      } else {
+        any_move = TRUE;
+      }  /* if */
+    }  /* if */
+  }  /* for */
+  if (!any_copy) cssp->has_user_provided_copy_constructor = FALSE;
+  if (!any_move) cssp->has_user_provided_move_constructor = FALSE;
+}  /* discount_ineligible_copy_and_move_ctors */
+
+
 static void check_special_member_functions(a_type_ptr            class_type,
                                            a_class_def_state_ptr class_state)
 
@@ -25202,6 +25315,11 @@ The routine body is not generated until it is known to be needed.
      nontrivial.  A class is trivially copyable if it has a trivial destructor,
      and it is bitwise copyable/assignable, except perhaps for deleted copy
      functions. */
+  if (concepts_enabled &&
+      (cssp->has_user_provided_copy_constructor ||
+       cssp->has_user_provided_move_constructor)) {
+    discount_ineligible_copy_and_move_ctors(class_type, cssp);
+  }  /* if */
   if (cssp->has_user_provided_copy_constructor) {
     cssp->makes_copy_construction_nontrivial = TRUE;
     cssp->construction_by_bitwise_copy_allowed = FALSE;

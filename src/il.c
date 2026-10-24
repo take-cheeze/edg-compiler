@@ -27695,6 +27695,39 @@ constructor.
 
 #endif /* IA64_ABI */
 
+static a_boolean all_copy_and_move_ctors_deleted(
+                                     a_type_ptr                     class_type,
+                                     a_class_symbol_supplement_ptr  cssp)
+/*
+Return TRUE if every eligible copy and move constructor of class_type is
+deleted.  The IA-64 ABI makes a class non-trivial for the purposes of calls
+when all of them are deleted, not when one is: a class with a deleted copy
+constructor and a trivial move constructor is passed and returned in registers
+by g++ and clang.
+*/
+{
+  a_boolean     result = TRUE;
+  a_symbol_ptr  sym = cssp->constructor;
+  a_boolean     overloaded = FALSE;
+
+  if (sym != NULL && symbol_is(sym, sk_overloaded_function)) {
+    sym = sym->variant.overloaded_function.symbols;
+    overloaded = TRUE;
+  }  /* if */
+  for (; sym != NULL && result; sym = (overloaded ? sym->next : NULL)) {
+    a_type_qualifier_set  qualifiers;
+    if (symbol_is(sym, sk_member_function) &&
+        is_copy_constructor(sym->variant.routine.ptr, class_type, &qualifiers,
+                            /*include_move_ctors=*/TRUE,
+                            /*is_declarative_context=*/FALSE) &&
+        !sym->variant.routine.ptr->is_deleted && !is_ineligible(sym)) {
+      result = FALSE;
+    }  /* if */
+  }  /* for */
+  return result;
+}  /* all_copy_and_move_ctors_deleted */
+
+
 a_boolean type_returned_by_cctor(a_type_ptr  return_type,
                                  a_boolean   *p_incomplete)
 /*
@@ -27728,7 +27761,11 @@ that the caller may record a fixup entry to revisit the transfer method later.
                      generated_copy_constructor_is_trivial(cssp))
 #endif /* IA64_ABI */
                                                                  ) ||
-               cssp->has_deleted_copy_or_move_constructor
+               (cssp->has_deleted_copy_or_move_constructor
+#if IA64_ABI
+                && all_copy_and_move_ctors_deleted(return_type, cssp)
+#endif /* IA64_ABI */
+                                                                     )
 #if IA64_ABI
 #if ABI_COMPATIBILITY_VERSION >= 408
                || has_deleted_or_nontrivial_destructor(cssp)
