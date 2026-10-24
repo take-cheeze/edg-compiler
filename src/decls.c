@@ -19788,6 +19788,29 @@ non-inline; otherwise, mark it as inline.
 }  /* mark_inline_variable */
 
 
+static void mark_thread_local_before_initializer(
+                                              a_decl_parse_state  *state,
+                                              a_variable_ptr      var_ptr)
+/*
+var_ptr is the variable declared by state, about to be initialized.  If it
+was declared "thread_local" ("_Thread_local"), set is_thread_local now:
+check_use_of_thread_local sets it only at the end of the declaration, after
+the initializer was folded, and the folding must know that the address of the
+variable is not a constant (a thread_local object holding a pointer to itself,
+like std::string, is initialized dynamically).
+*/
+{
+  if (var_ptr != NULL &&
+      (state->dso_flags & DSO_THREAD_LOCAL) != 0 &&
+      (symbol_is(state->sym, sk_variable) ||
+       symbol_is(state->sym, sk_static_data_member)) &&
+      !var_ptr->is_struct_binding_container &&
+      var_has_static_or_thread_storage_duration(var_ptr)) {
+    var_ptr->is_thread_local = TRUE;
+  }  /* if */
+}  /* mark_thread_local_before_initializer */
+
+
 static void variable_declaration(a_decl_parse_state  *state,
                                  a_symbol_locator    *locator,
                                  a_decl_pos_block    *decl_pos_block)
@@ -20156,6 +20179,7 @@ if one is present.
         }  /* if */
       }  /* if */
     }  /* if */
+    mark_thread_local_before_initializer(state, var_ptr);
     /* Now scan the initializer. */
     /* If the symbol is a parameter, the subroutine will generate the error.
        This is done rather than flagging the error here because the subroutine
@@ -20203,6 +20227,7 @@ if one is present.
     a_boolean	def_init_okay, sym_invisible = state->sym->is_invisible;
     if (gpp_mode) state->sym->is_invisible = TRUE;
     if (state->dso_flags & DSO_CONSTINIT) var_ptr->declared_constinit = TRUE;
+    mark_thread_local_before_initializer(state, var_ptr);
     def_init_okay = def_initializer(state->sym, &locator->source_position);
     state->type = var_ptr->type;
     if (gpp_mode) state->sym->is_invisible = sym_invisible;

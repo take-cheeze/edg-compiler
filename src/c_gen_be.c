@@ -9254,6 +9254,26 @@ Generate C for an asm statement or declaration.
 }  /* dump_asm_entry */
 
 
+#if C_GEN_BE_GENERATES_C23
+static a_boolean is_put_out_as_thread_local(a_variable_ptr var)
+/*
+Return TRUE if the variable is put out with "__thread": a thread_local variable
+or one declared with the GNU "__thread" keyword (dump_variable_decl).
+*/
+{
+  a_boolean result = var->is_thread_local;
+#if DECL_MODIFIERS_IN_USE && \
+    (MICROSOFT_EXTENSIONS_ALLOWED || THREAD_LOCAL_STORAGE_SPECIFIER_ALLOWED)
+  if (!microsoft_dialect_is_generated_code_target &&
+      (var->decl_modifiers & DM_THREAD)) {
+    result = TRUE;
+  }  /* if */
+#endif /* DECL_MODIFIERS_IN_USE && (MICROSOFT_EXTENSIONS_ALLOWED || ...) */
+  return result;
+}  /* is_put_out_as_thread_local */
+#endif /* C_GEN_BE_GENERATES_C23 */
+
+
 static void dump_scope_variables(a_scope_ptr scope,
                                  a_boolean   interleave_asm_decls,
                                  a_boolean   dump_vars_without_initializers,
@@ -9308,7 +9328,7 @@ interleaved with the variables.
          definition in another translation unit. */
 #if C_GEN_BE_GENERATES_C23
     } else if (!dump_initializers && scope->kind == sck_file &&
-               var_ptr->is_thread_local &&
+               is_put_out_as_thread_local(var_ptr) &&
                var_ptr->storage_class != sc_extern) {
       /* In C23, a non-extern file-scope thread_local declaration is always
          a definition, so we cannot follow the usual pattern of putting out
@@ -9317,7 +9337,7 @@ interleaved with the variables.
     } else {
       a_boolean dump_no_init = dump_vars_without_initializers;
 #if C_GEN_BE_GENERATES_C23
-      if (scope->kind == sck_file && var_ptr->is_thread_local) {
+      if (scope->kind == sck_file && is_put_out_as_thread_local(var_ptr)) {
         /* We skipped the "forward declaration" of thread-local variables,
            so we need to ensure that they are put out in the "definition"
            pass over the variable list. */
