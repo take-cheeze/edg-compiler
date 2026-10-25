@@ -9254,7 +9254,18 @@ Generate C for an asm statement or declaration.
 }  /* dump_asm_entry */
 
 
-#if C_GEN_BE_GENERATES_C23
+/*
+nfcxx: a non-extern file-scope thread-local variable gets no tentative
+declaration in any C mode, not only in C23: cproc (nfcxx's QBE back end)
+takes "static __thread long x;" for a definition as C23 does, and the address
+of a thread-local variable is not a constant, so no initializer put out before
+its definition can need the declaration.
+*/
+#ifndef NO_TENTATIVE_THREAD_LOCAL_DECLS
+#define NO_TENTATIVE_THREAD_LOCAL_DECLS TRUE
+#endif /* !defined(NO_TENTATIVE_THREAD_LOCAL_DECLS) */
+
+#if C_GEN_BE_GENERATES_C23 || NO_TENTATIVE_THREAD_LOCAL_DECLS
 static a_boolean is_put_out_as_thread_local(a_variable_ptr var)
 /*
 Return TRUE if the variable is put out with "__thread": a thread_local variable
@@ -9271,7 +9282,7 @@ or one declared with the GNU "__thread" keyword (dump_variable_decl).
 #endif /* DECL_MODIFIERS_IN_USE && (MICROSOFT_EXTENSIONS_ALLOWED || ...) */
   return result;
 }  /* is_put_out_as_thread_local */
-#endif /* C_GEN_BE_GENERATES_C23 */
+#endif /* C_GEN_BE_GENERATES_C23 || NO_TENTATIVE_THREAD_LOCAL_DECLS */
 
 
 static void dump_scope_variables(a_scope_ptr scope,
@@ -9326,24 +9337,25 @@ interleaved with the variables.
          initializer; putting out a declaration with an initializer would
          be treated as a definition, which would conflict with a real
          definition in another translation unit. */
-#if C_GEN_BE_GENERATES_C23
+#if C_GEN_BE_GENERATES_C23 || NO_TENTATIVE_THREAD_LOCAL_DECLS
     } else if (!dump_initializers && scope->kind == sck_file &&
                is_put_out_as_thread_local(var_ptr) &&
                var_ptr->storage_class != sc_extern) {
       /* In C23, a non-extern file-scope thread_local declaration is always
          a definition, so we cannot follow the usual pattern of putting out
-         a non-defining declaration followed by the definition. */
-#endif /* C_GEN_BE_GENERATES_C23 */
+         a non-defining declaration followed by the definition (and nfcxx
+         does without it in every mode: NO_TENTATIVE_THREAD_LOCAL_DECLS). */
+#endif /* C_GEN_BE_GENERATES_C23 || NO_TENTATIVE_THREAD_LOCAL_DECLS */
     } else {
       a_boolean dump_no_init = dump_vars_without_initializers;
-#if C_GEN_BE_GENERATES_C23
+#if C_GEN_BE_GENERATES_C23 || NO_TENTATIVE_THREAD_LOCAL_DECLS
       if (scope->kind == sck_file && is_put_out_as_thread_local(var_ptr)) {
         /* We skipped the "forward declaration" of thread-local variables,
            so we need to ensure that they are put out in the "definition"
            pass over the variable list. */
         dump_no_init = TRUE;
       }  /* if */
-#endif /* C_GEN_BE_GENERATES_C23 */
+#endif /* C_GEN_BE_GENERATES_C23 || NO_TENTATIVE_THREAD_LOCAL_DECLS */
       dump_variable_decl(var_ptr, dump_no_init, dump_initializers);
     }  /* if */
   }  /* for */
