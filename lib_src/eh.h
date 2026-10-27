@@ -419,20 +419,20 @@ typedef struct an_eh_stack_entry {
 } an_eh_stack_entry;
 
 
-EXTERN a_region_number
+EXTERN RUNTIME_EH_TLS a_region_number
 		__eh_curr_region initial_value(0);
 			/* Number of the current region in topmost function
 			   entry on the EH stack. */
 
-EXTERN an_eh_stack_entry_ptr
+EXTERN RUNTIME_EH_TLS an_eh_stack_entry_ptr
 		__curr_eh_stack_entry initial_value(NULL);
 			/* The pointer to the top of the stack of EH
 			   entries. */
-EXTERN int	__catch_clause_number;
+EXTERN RUNTIME_EH_TLS int	__catch_clause_number;
 			/* Contains the sequence number of the catch clause
 			   associated with a given try block. */
 
-EXTERN void*	__caught_object_address;
+EXTERN RUNTIME_EH_TLS void*	__caught_object_address;
 			/* The address of the object to be used as the value
 			   of the parameter in the catch clause. */
 

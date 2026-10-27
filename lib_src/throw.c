@@ -249,28 +249,28 @@ a_type_info_impl
 #endif /* !ABI_CHANGES_FOR_RTTI */
 
 
-static a_throw_stack_entry_ptr
+static RUNTIME_EH_TLS a_throw_stack_entry_ptr
 		curr_throw_stack_entry = NULL;
 			/* The pointer to the top of the stack of throw
 			   entries. */
 
-static a_mem_block_descr_ptr
+static RUNTIME_EH_TLS a_mem_block_descr_ptr
 		curr_mem_block_descr = NULL;
 			/* Pointer to the top of a stack of memory
 			   blocks managed by the EH runtime. */
 
-static a_mem_allocation_ptr
+static RUNTIME_EH_TLS a_mem_allocation_ptr
 		mem_allocation_stack = NULL;
 			/* Pointer to the top of a stack of memory
 			   allocation entries. */
 
-static a_mem_block_descr
+static RUNTIME_EH_TLS a_mem_block_descr
 		initial_mem_block_descr;
 			/* Initial entry pointed to by the memory block
 			   stack. */
 
 
-static union {
+static RUNTIME_EH_TLS union {
   char		memory[EH_MEMORY_ALLOCATION_INCREMENT];
 			/* The initial block of memory to be used.  This
 			   avoids the need for the EH runtime to do
@@ -1290,10 +1290,10 @@ the destination try block, and the rest of the throw (the partial cleanup of tha
    error, and a program built with nfcxx_eh_unwind.h defines the flag (weakly, as 1) in its own object, which the
    linker takes ahead of this one. */
 int __nfcxx_eh_unwind_frames __attribute__((weak)) = 0;
-static uintptr_t nfcxx_unwind_owner;
-static a_boolean nfcxx_unwind_in_progress;
+static RUNTIME_EH_TLS uintptr_t nfcxx_unwind_owner;
+static RUNTIME_EH_TLS a_boolean nfcxx_unwind_in_progress;
 #if NFCXX_EH_UNWIND_RUNTIME
-static struct _Unwind_Exception nfcxx_unwind_exception;
+static RUNTIME_EH_TLS struct _Unwind_Exception nfcxx_unwind_exception;
 #endif /* NFCXX_EH_UNWIND_RUNTIME */
 
 static void nfcxx_finish_throw(void);
@@ -1349,17 +1349,17 @@ dead, and the frame is the top of the chain after they are dropped.
 }  /* __nfcxx_eh_frame_unwind */
 
 /* The state of the throw in progress that nfcxx_finish_throw reads (set by __throw). */
-static an_eh_stack_entry_ptr destination_ehsep;
-static int destination_catch_value;
-static void *object_ptr;
-static void *object_buffer_ptr;
-static a_type_info_impl_ptr thrown_type_info;
-static an_ETS_flag_set throw_flags;
-static an_ETS_flag_set *throw_ptr_flags;
-static an_exception_type_specification_ptr etsp_found;
-static a_boolean nullptr_conv_needed;
-static an_access_flag_string access_flags;
-static a_boolean use_access_flags;
+static RUNTIME_EH_TLS an_eh_stack_entry_ptr destination_ehsep;
+static RUNTIME_EH_TLS int destination_catch_value;
+static RUNTIME_EH_TLS void *object_ptr;
+static RUNTIME_EH_TLS void *object_buffer_ptr;
+static RUNTIME_EH_TLS a_type_info_impl_ptr thrown_type_info;
+static RUNTIME_EH_TLS an_ETS_flag_set throw_flags;
+static RUNTIME_EH_TLS an_ETS_flag_set *throw_ptr_flags;
+static RUNTIME_EH_TLS an_exception_type_specification_ptr etsp_found;
+static RUNTIME_EH_TLS a_boolean nullptr_conv_needed;
+static RUNTIME_EH_TLS an_access_flag_string access_flags;
+static RUNTIME_EH_TLS a_boolean use_access_flags;
 static void nfcxx_finish_throw(void);
 
 EXTERN_C void __throw(void)
