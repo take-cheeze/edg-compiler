@@ -42,6 +42,7 @@ enum an_option_kind {
   optk_preprocess_only_no_line_dirs,
   optk_preprocess_only_emit_line_dirs,
   optk_keep_comments_in_pp_output,
+  optk_nfcxx_eh_thread_local,
 #if BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE
   optk_old_line_dirs,
   optk_nfcxx_eh_unwind,
@@ -463,6 +464,15 @@ EXTERN_THREAD a_boolean
 			/* If TRUE, comments should be retained in
 			   preprocessing output.  Meaningful only when
 			   generate_pp_output is TRUE. */
+EXTERN_THREAD a_boolean
+		nfcxx_eh_thread_local;
+			/* If TRUE (nfcxx), the exception handling variables of
+			   the generated code (__curr_eh_stack_entry,
+			   __eh_curr_region, __catch_clause_number and
+			   __caught_object_address) are __thread, one copy per
+			   thread, as the runtime built with RUNTIME_EH_TLS
+			   defines them. Any back end (the C one, and the IL
+			   that nfcxx's Path B reads). */
 #if BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE
 EXTERN_THREAD a_boolean
 		gen_old_style_line_dirs;

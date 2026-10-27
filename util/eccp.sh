@@ -1646,6 +1646,7 @@ process_option()
          --dollar | \
 	 --old_line_commands | \
 	 --nfcxx_eh_unwind | \
+	 --nfcxx_eh_thread_local | \
 	 --microsoft | \
 	 --no_microsoft | \
 	 --microsoft_bugs | \

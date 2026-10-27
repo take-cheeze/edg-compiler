@@ -271,6 +271,9 @@ Initialize the option information table.
                          /*value=*/TRUE, /*arg_required=*/FALSE,
                          pchek_none);
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
+  add_option_description(optk_nfcxx_eh_thread_local, "nfcxx_eh_thread_local",
+                         '\0', /*value=*/TRUE, /*arg_required=*/FALSE,
+                         pchek_none);
   add_option_description(optk_C_dialect_pcc, "old_c", 'K',
                          /*value=*/TRUE, /*arg_required=*/FALSE,
                          pchek_command_line);
@@ -10650,6 +10653,11 @@ Process the arguments on the command line that invoked the compiler.
         nfcxx_eh_unwind = TRUE;
         break;
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
+      case optk_nfcxx_eh_thread_local:
+        /* The EH variables are thread-local (nfcxx). */
+        check_assertion(opt_value == TRUE);
+        nfcxx_eh_thread_local = TRUE;
+        break;
       case optk_C_dialect_pcc:
         /* Compile K&R/pcc dialect of C. */
         check_assertion(opt_value == TRUE);
@@ -13262,6 +13270,7 @@ variables declared in cmd_line.h.
   gen_old_style_line_dirs = FALSE;
   nfcxx_eh_unwind = FALSE;
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
+  nfcxx_eh_thread_local = FALSE;
   gen_edg_special_types = FALSE;
   gen_line_info_in_pp_output = FALSE;
   f_pp_output = NULL;

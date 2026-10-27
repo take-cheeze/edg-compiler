@@ -4239,6 +4239,21 @@ STATIC_THREAD a_variable_ptr
 		caught_object_address_var;
 
 
+static a_variable_ptr make_lowered_eh_variable(const char *name, a_type_ptr type)
+/*
+Make one of the exception handling variables of the runtime, an extern
+declaration, __thread under --nfcxx_eh_thread_local (the runtime then has one
+copy per thread, and threads that throw or run destructors do not share the
+stack of EH entries).
+*/
+{
+  a_variable_ptr var = make_lowered_variable(name, /*already_il_name=*/FALSE,
+                                             type, (a_storage_class)sc_extern);
+  if (nfcxx_eh_thread_local) var->decl_modifiers |= DM_THREAD;
+  return var;
+}  /* make_lowered_eh_variable */
+
+
 static a_variable_ptr make_eh_curr_region_var(void)
 /*
 Make __eh_curr_region, a global variable used for exception processing,
@@ -4247,10 +4262,8 @@ if it has not already been made.  Return a pointer to it.
 {
   if (eh_curr_region_var == NULL) {
     eh_curr_region_var =
-               make_lowered_variable("__eh_curr_region",
-                                     /*already_il_name=*/FALSE,
-                                     integer_type(targ_region_number_int_kind),
-                                     (a_storage_class)sc_extern);
+               make_lowered_eh_variable("__eh_curr_region",
+                                        integer_type(targ_region_number_int_kind));
   }  /* if */
   return eh_curr_region_var;
 }  /* make_eh_curr_region_var */
@@ -4277,10 +4290,8 @@ if it has not already been made.  Return a pointer to it.
 {
   if (catch_clause_number_var == NULL) {
     catch_clause_number_var =
-               make_lowered_variable("__catch_clause_number",
-                                     /*already_il_name=*/FALSE,
-                                     integer_type((an_integer_kind)ik_int),
-                                     (a_storage_class)sc_extern);
+               make_lowered_eh_variable("__catch_clause_number",
+                                        integer_type((an_integer_kind)ik_int));
   }  /* if */
   return catch_clause_number_var;
 }  /* make_catch_clause_number_var */
@@ -4294,10 +4305,8 @@ if it has not already been made.  Return a pointer to it.
 {
   if (caught_object_address_var == NULL) {
     caught_object_address_var =
-                             make_lowered_variable("__caught_object_address",
-                                                   /*already_il_name=*/FALSE,
-                                                   void_star_type(),
-                                                   (a_storage_class)sc_extern);
+                             make_lowered_eh_variable("__caught_object_address",
+                                                      void_star_type());
   }  /* if */
   return caught_object_address_var;
 }  /* make_caught_object_address_var */
@@ -4760,10 +4769,8 @@ if it has not already been made.  Return a pointer to it.
 {
   if (curr_eh_stack_entry_var == NULL) {
     curr_eh_stack_entry_var =
-           make_lowered_variable("__curr_eh_stack_entry",
-                                 /*already_il_name=*/FALSE,
-                                 make_pointer_type(make_eh_stack_entry_type()),
-                                 (a_storage_class)sc_extern);
+           make_lowered_eh_variable("__curr_eh_stack_entry",
+                                    make_pointer_type(make_eh_stack_entry_type()));
   }  /* if */
   return curr_eh_stack_entry_var;
 }  /* make_curr_eh_stack_entry_var */

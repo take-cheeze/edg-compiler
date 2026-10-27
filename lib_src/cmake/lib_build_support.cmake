@@ -95,8 +95,10 @@ function(add_edg_cpp_rt_target target_name)
   if(UNIX AND NOT APPLE)
     # When building the library on Linux machines, we need to enable g++ mode
     # so that __asm function specifiers in the standard C library headers are
-    # understood.
-    set(edg_target_emulation "--g++")
+    # understood. nfcxx: the exception handling state is thread-local there
+    # (lib_src/config.h, RUNTIME_EH_TLS), so the runtime's own generated code
+    # declares it so too (--nfcxx_eh_thread_local).
+    set(edg_target_emulation "--g++" "--nfcxx_eh_thread_local")
   elseif(UNIX)
     # When building the library on MacOS machines, we need to enable clang
     # mode so NULL redefinitions specified in the standard C library headers

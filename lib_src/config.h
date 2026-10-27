@@ -317,6 +317,23 @@ any additional blocks that are required.
 #endif /* ifndef EH_MEMORY_ALLOCATION_INCREMENT */
 
 /*
+nfcxx: the storage class of the exception handling state (the stack of EH
+entries, the throw in progress and the memory its objects live in), so that
+threads that throw or run destructors at the same time do not share it. The
+front end declares the variables of the generated code the same way under
+--nfcxx_eh_thread_local, which the nfcxx driver passes when the runtime it links
+has the state thread-local. Linux targets only: the macOS front end (clang
+dialect) has no __thread. NFCXX_EH_NO_TLS turns it off.
+*/
+#ifndef RUNTIME_EH_TLS
+#if defined(__GNUC__) && defined(__linux__) && !defined(NFCXX_EH_NO_TLS)
+#define RUNTIME_EH_TLS __thread
+#else /* !(defined(__GNUC__) && defined(__linux__) && !defined(NFCXX_EH_NO_TLS)) */
+#define RUNTIME_EH_TLS
+#endif /* defined(__GNUC__) && defined(__linux__) && !defined(NFCXX_EH_NO_TLS) */
+#endif /* ifndef RUNTIME_EH_TLS */
+
+/*
 A type that, when used, will be aligned with the strictest alignment
 requirements.
 */
