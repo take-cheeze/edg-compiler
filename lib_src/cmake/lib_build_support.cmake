@@ -95,10 +95,15 @@ function(add_edg_cpp_rt_target target_name)
   if(UNIX AND NOT APPLE)
     # When building the library on Linux machines, we need to enable g++ mode
     # so that __asm function specifiers in the standard C library headers are
-    # understood. nfcxx: the exception handling state is thread-local there
-    # (lib_src/config.h, RUNTIME_EH_TLS), so the runtime's own generated code
-    # declares it so too (--nfcxx_eh_thread_local).
-    set(edg_target_emulation "--g++" "--nfcxx_eh_thread_local")
+    # understood.
+    set(edg_target_emulation "--g++")
+    if(NOT NFCXX_EH_NO_TLS)
+      # nfcxx: the exception handling state is thread-local on a Linux target
+      # (lib_src/config.h, NFCXX_EH_TLS), and the runtime's own generated code
+      # declares it so too (--nfcxx_eh_thread_local). The macOS target, which
+      # nfcxx also builds on a Linux host, sets NFCXX_EH_NO_TLS.
+      list(APPEND edg_target_emulation "--nfcxx_eh_thread_local" "-DNFCXX_EH_TLS=1")
+    endif()
   elseif(UNIX)
     # When building the library on MacOS machines, we need to enable clang
     # mode so NULL redefinitions specified in the standard C library headers
