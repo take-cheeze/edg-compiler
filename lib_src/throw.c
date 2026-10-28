@@ -271,7 +271,7 @@ static RUNTIME_EH_TLS a_mem_block_descr
 
 
 static RUNTIME_EH_TLS union {
-  char		memory[EH_MEMORY_ALLOCATION_INCREMENT];
+  char		memory[EH_INITIAL_MEM_BLOCK_SIZE];
 			/* The initial block of memory to be used.  This
 			   avoids the need for the EH runtime to do
 			   any dynamic memory allocation in most cases. */
@@ -364,7 +364,7 @@ Initialize the variables that keep track of memory used by the EH runtime.
   /* Initialize the initial memory block description record. */
   mem_block_descr_init(&initial_mem_block_descr);
   initial_mem_block_descr.addr = initial_mem_block.memory;
-  initial_mem_block_descr.size = EH_MEMORY_ALLOCATION_INCREMENT;
+  initial_mem_block_descr.size = EH_INITIAL_MEM_BLOCK_SIZE;
   initial_mem_block_descr.used = 0;
   initial_mem_block_descr.dynamically_allocated = FALSE;
   curr_mem_block_descr = &initial_mem_block_descr;
