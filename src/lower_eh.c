@@ -4249,7 +4249,11 @@ stack of EH entries).
 {
   a_variable_ptr var = make_lowered_variable(name, /*already_il_name=*/FALSE,
                                              type, (a_storage_class)sc_extern);
+#ifdef DM_THREAD
+  /* Not in a configuration without thread-local storage specifiers (macOS),
+     where the runtime's state stays global and the option is not passed. */
   if (nfcxx_eh_thread_local) var->decl_modifiers |= DM_THREAD;
+#endif /* ifdef DM_THREAD */
   return var;
 }  /* make_lowered_eh_variable */
 

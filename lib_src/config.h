@@ -328,10 +328,27 @@ dialect) has no __thread. NFCXX_EH_NO_TLS turns it off.
 #ifndef RUNTIME_EH_TLS
 #if defined(__GNUC__) && defined(__linux__) && !defined(NFCXX_EH_NO_TLS)
 #define RUNTIME_EH_TLS __thread
+#define RUNTIME_EH_TLS_ACTIVE 1
 #else /* !(defined(__GNUC__) && defined(__linux__) && !defined(NFCXX_EH_NO_TLS)) */
 #define RUNTIME_EH_TLS
+#define RUNTIME_EH_TLS_ACTIVE 0
 #endif /* defined(__GNUC__) && defined(__linux__) && !defined(NFCXX_EH_NO_TLS) */
 #endif /* ifndef RUNTIME_EH_TLS */
+
+/*
+The size of the initial memory block of the EH runtime (the one that is not
+allocated). Thread-local, it must stay small: a shared object whose code reaches
+its TLS through the initial-exec model (QBE's) and that is loaded with dlopen
+gets its TLS from the few hundred bytes glibc reserves for that. A larger need is
+met by the blocks the runtime allocates (and frees when they empty).
+*/
+#ifndef EH_INITIAL_MEM_BLOCK_SIZE
+#if RUNTIME_EH_TLS_ACTIVE
+#define EH_INITIAL_MEM_BLOCK_SIZE 256
+#else /* !RUNTIME_EH_TLS_ACTIVE */
+#define EH_INITIAL_MEM_BLOCK_SIZE EH_MEMORY_ALLOCATION_INCREMENT
+#endif /* RUNTIME_EH_TLS_ACTIVE */
+#endif /* ifndef EH_INITIAL_MEM_BLOCK_SIZE */
 
 /*
 A type that, when used, will be aligned with the strictest alignment
