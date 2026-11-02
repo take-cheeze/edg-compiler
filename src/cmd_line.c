@@ -13270,7 +13270,11 @@ variables declared in cmd_line.h.
   gen_old_style_line_dirs = FALSE;
   nfcxx_eh_unwind = FALSE;
 #endif /* BACK_END_IS_C_GEN_BE || BACK_END_IS_CP_GEN_BE */
+#if defined(NFCXX_EH_TLS_DEFAULT) && NFCXX_EH_TLS_DEFAULT
+  nfcxx_eh_thread_local = TRUE;
+#else /* !(defined(NFCXX_EH_TLS_DEFAULT) && NFCXX_EH_TLS_DEFAULT) */
   nfcxx_eh_thread_local = FALSE;
+#endif /* defined(NFCXX_EH_TLS_DEFAULT) && NFCXX_EH_TLS_DEFAULT */
   gen_edg_special_types = FALSE;
   gen_line_info_in_pp_output = FALSE;
   f_pp_output = NULL;

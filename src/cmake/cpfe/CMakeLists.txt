@@ -46,3 +46,15 @@ add_dependencies(cpfe-all cpfe)
 
 # Expose softfloat.
 add_softfloat_to_target("${primary_front_end_target}")
+
+# nfcxx: the Linux runtime keeps its EH state thread-local (NFCXX_EH_TLS), so
+# the front end declares it that way by default. The macOS presets turn this
+# off, since their runtime is not thread-local.
+option(NFCXX_EH_TLS_DEFAULT "Declare nfcxx EH state thread-local by default" OFF)
+if(NFCXX_EH_TLS_DEFAULT)
+  foreach(fe_target cpfe cpfe-daemon)
+    if(TARGET ${fe_target})
+      target_compile_definitions(${fe_target} PRIVATE NFCXX_EH_TLS_DEFAULT=1)
+    endif()
+  endforeach()
+endif()

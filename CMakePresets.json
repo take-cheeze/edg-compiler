@@ -109,7 +109,8 @@
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "DEBUG",
-        "EDG_CPP_RT_LIBS": "linux_riscv64 linux_riscv32 linux_aarch64 linux_armv7 linux_i686 linux_x86_64 win32 win64"
+        "EDG_CPP_RT_LIBS": "linux_riscv64 linux_riscv32 linux_aarch64 linux_armv7 linux_i686 linux_x86_64 win32 win64",
+        "NFCXX_EH_TLS_DEFAULT": "ON"
       }
     },
     {
