@@ -11359,9 +11359,16 @@ storage_class_specifier:
           if (std_attr_seen) {
             if ((decl_specifiers_seen & (DS_TYPE | DS_VOID)) == 0) {
               /* If no type specifier has been seen yet, ignore the attributes
-                 with an error. */
-              pos_error(ec_unattached_attribute,
-                        &state->specifier_attributes->group->position);
+                 with an error. GNU mode (g++) takes an attribute there as a
+                 warning, as GCC does: `using N = alignas(8) T[2];` in HIP's
+                 headers (amd_hip_vector_types.h, the alias of a vector). */
+              if (gnu_mode) {
+                pos_warning(ec_unattached_attribute,
+                            &state->specifier_attributes->group->position);
+              } else {
+                pos_error(ec_unattached_attribute,
+                          &state->specifier_attributes->group->position);
+              }  /* if */
               state->specifier_attributes = NULL;
             } else {
               /* Standard attributes must be the last item in a decl-specifier
