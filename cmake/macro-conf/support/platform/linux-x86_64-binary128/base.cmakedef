@@ -1,0 +1,10 @@
+# Linux, the x86-64 target's layout, with long double as IEEE binary128 (the AArch64 Linux C ABI, AAPCS64).
+# nfcxx (Path B on Linux aarch64 hosts): the front end keeps the x86-64 layout of every type except long double, whose
+# format, constants, limits and macros are binary128 (113-bit significand, 15-bit exponent, 16 bytes), as gcc's on
+# aarch64. The linux-x86_64 configuration is unchanged.
+import <support/platform/linux-x86_64/base>
+
+# The x87 80-bit format is off, and so is __float80 (which only x87 provides); binary128 is on.
+FP_LONG_DOUBLE_IS_80BIT_EXTENDED=0
+FP_LONG_DOUBLE_IS_BINARY128=1
+FLOAT80_ENABLING_POSSIBLE=0
