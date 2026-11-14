@@ -5638,8 +5638,58 @@ described by arguments.
   a_boolean                     remove_compiler_generated_casts = FALSE;
 #endif /* BUILTIN_FUNCTIONS_ENABLED */
   an_expr_node_ptr              call_argument;
+  a_boolean                     x8_sret_call = FALSE;
+  a_boolean                     x8_sret_pad = FALSE;
 
-  dump_expr_with_parens(func_expr);
+#if defined(__aarch64__) || (defined(TARG_SUPPORTS_ARM64) && TARG_SUPPORTS_ARM64)
+  /* nfcxx: AArch64 passes the address of a class result in x8, not as the first argument, but lowering made it the first
+     parameter. For a library routine that this unit only declares (system header, no body), call it through a cast to a
+     function type that returns the class, so the C compiler puts the address in x8. */
+  if (is_routine_node(func_expr) && arguments != NULL && !getenv("NFCXX_NO_X8_SRET")) {
+    a_routine_ptr                 rout = func_expr->variant.routine.ptr;
+    a_type_ptr                    rtype = skip_typerefs(rout->type);
+    a_routine_type_supplement_ptr rtsp = rtype->variant.routine.extra_info;
+    if (rtsp->value_returned_as_parameter && !rtsp->return_value_parameter_follows_this &&
+        !rtsp->has_ellipsis && rtsp->param_type_list != NULL &&
+        rout->function_def_number == NULL_function_def_number && !rout->is_inline &&
+        seq_is_in_system_header(rout->source_corresp.decl_position.seq) &&
+        /* nfcxx's EH shim (lib/ehshim) defines these, compiled by this front end, so they keep the lowered convention. */
+        rout->source_corresp.name != NULL && !strstr(rout->source_corresp.name, "current_exception") &&
+        !strstr(rout->source_corresp.name, "__from_native_exception_pointer") && !strstr(rout->source_corresp.name, "nested_ptr") &&
+        is_pointer_type(skip_typerefs(rtsp->param_type_list->type))) {
+      a_type_ptr       result_type = skip_typerefs(type_pointed_to(skip_typerefs(rtsp->param_type_list->type)));
+      a_param_type_ptr ptp;
+      /* A class of 16 bytes or less would come back in x0/x1 from a C function, but the library returns it through x8:
+         the result type of the cast is padded past 16 bytes, and the class is its first member. */
+      a_boolean        pad = (result_type->size <= 16);
+      write_tok_str("(*(");
+      dump_type(result_type, /*add_pointer_to=*/TRUE);
+      write_tok_str(")(");
+      dump_expr_with_parens(arguments);
+      write_tok_str(") = ((");
+      if (pad) {
+        write_tok_str("struct { ");
+        dump_type(result_type, /*add_pointer_to=*/FALSE);
+        write_tok_str(" v; char p[16]; }");
+      } else {
+        dump_type(result_type, /*add_pointer_to=*/FALSE);
+      }  /* if */
+      write_tok_str(" (*)(");
+      for (ptp = rtsp->param_type_list->next; ptp != NULL; ptp = ptp->next) {
+        dump_type(ptp->type, /*add_pointer_to=*/FALSE);
+        if (ptp->next != NULL) write_tok_str(", ");
+      }  /* for */
+      if (rtsp->param_type_list->next == NULL) write_tok_str("void");
+      write_tok_str("))");
+      dump_expr_with_parens(func_expr);
+      write_tok_str(")");
+      arguments = arguments->next;
+      x8_sret_call = TRUE;
+      x8_sret_pad = pad;
+    }  /* if */
+  }  /* if */
+#endif /* AArch64 */
+  if (!x8_sret_call) dump_expr_with_parens(func_expr);
   write_tok_ch('(');
 #if CHECKING
   /* Keep track of parameter types to check for arguments to old-style
@@ -5722,6 +5772,8 @@ described by arguments.
     }  /* if */
   }  /* for */
   write_tok_ch(')');
+  if (x8_sret_pad) write_tok_str(".v");
+  if (x8_sret_call) write_tok_ch(')');
 }  /* dump_call */
 
 #if BUILTIN_FUNCTIONS_ENABLED
