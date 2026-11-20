@@ -26643,6 +26643,31 @@ Set tblock->result to TRUE if so.
 }  /* examine_dynamic_init_for_throwing_exception */
 
 
+static a_boolean body_check_active = FALSE;
+
+static a_boolean routine_is_non_throwing(a_routine_ptr rp)
+/*
+is_non_throwing_routine, except during statement_list_might_throw: that runs
+while a routine is being lowered, when completing a defaulted or template
+exception specification is not safe.  There, only a specification that is
+already known counts; anything else is treated as potentially throwing.
+*/
+{
+  if (!body_check_active) return is_non_throwing_routine(rp);
+  if (rp->never_throws || rp->is_trivial_default_constructor ||
+      rp->is_trivial_copy_function) return TRUE;
+  {
+    a_type_ptr rtp = rp->type;
+    if (rtp->kind == (a_type_kind)tk_routine) {
+      a_routine_type_supplement_ptr rtsp = rtp->variant.routine.extra_info;
+      an_exception_specification_ptr esp = rtsp->exception_specification;
+      if (esp == NULL || esp->indeterminate) return FALSE;
+    }
+    return is_nothrow_type(skip_typerefs(rtp));
+  }
+}  /* routine_is_non_throwing */
+
+
 static void examine_expr_for_throwing_exception(
                                     an_expr_node_ptr                    node,
                                     an_expr_or_stmt_traversal_block_ptr tblock)
@@ -26665,7 +26690,7 @@ expression-traversal routines.  Set tblock->result to TRUE if so.
         an_expr_node_ptr op1 = node->variant.operation.operands;
         a_routine_ptr    rout = routine_from_function_expr(op1);
         if (rout != NULL) {
-          if (!is_non_throwing_routine(rout)) {
+          if (!routine_is_non_throwing(rout)) {
             might_throw = TRUE;
             if (rout->is_declared_constexpr && gpp_version_is(<90000)) {
               /* GCC versions prior to 9.x appear to check calls for being
@@ -26706,7 +26731,7 @@ expression-traversal routines.  Set tblock->result to TRUE if so.
          throws.  The freeing_of_storage_on_exception dynamic init on a new,
          if present, will be processed by the normal tree scan. */
       { a_routine_ptr rout = alloc_or_dealloc_routine_from_new_delete(node);
-        if (rout != NULL && !is_non_throwing_routine(rout)) might_throw = TRUE;
+        if (rout != NULL && !routine_is_non_throwing(rout)) might_throw = TRUE;
       }
       break;
     case enk_throw:
@@ -26819,6 +26844,30 @@ C++11 standard [expr.unary.noexcept].
 }  /* expr_might_throw */
 
 
+a_boolean statement_list_might_throw(a_statement_ptr statements)
+/*
+Return TRUE if executing the statements (a statement list, such as the body
+of a routine) might cause an exception to be thrown; the same question as
+expr_might_throw, asked of every expression in the list.  Used to decide
+whether a function with a noexcept specification needs its EH stack frame.
+*/
+{
+  a_boolean result = TRUE;
+
+  if (exceptions_enabled) {
+    an_expr_or_stmt_traversal_block tblock;
+    set_up_might_throw_traversal_block(&tblock);
+    body_check_active = TRUE;
+    traverse_statement_list(statements, &tblock);
+    body_check_active = FALSE;
+    result = tblock.result;
+  } else {
+    result = FALSE;
+  }  /* if */
+  return result;
+}  /* statement_list_might_throw */
+
+
 a_boolean dynamic_init_might_throw(a_dynamic_init_ptr dip)
 /*
 Return TRUE if evaluating the given initialization might cause an exception to
@@ -26844,7 +26893,7 @@ be thrown.
        backing expression and are handled by the normal traversal below. */
     result = expr_might_throw(backing);
     if (!result && dip->destructor != NULL &&
-        !is_non_throwing_routine(dip->destructor)) {
+        !routine_is_non_throwing(dip->destructor)) {
       result = TRUE;
     }  /* if */
   } else {

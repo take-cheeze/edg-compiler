@@ -4954,11 +4954,16 @@ statement if necessary.
     /* In the case where we're building the runtime library, don't take
        action on the exception specification (if any).  That's to prevent
        problems when the runtime library explicitly calls std::terminate(). */
-  } else if (tsp != NULL && !tsp->throw_any) {
+  } else if (tsp != NULL && !tsp->throw_any &&
+             !(tsp->is_noexcept && !statement_list_might_throw(
+                                 scope->assoc_block->variant.block.statements))) {
     /* The routine has an exception specification that the runtime library
        needs to know about.  (A null pointer means the function can throw
        anything.)  The noexcept(false) case is treated similarly (as is
-       the Microsoft-specific throw(...)). */
+       the Microsoft-specific throw(...)).  A noexcept routine whose body
+       cannot throw (every call is to a non-throwing routine, and there is no
+       throw, new or statement expression that might throw) gets no frame: an
+       exception cannot leave it, so the frame would never be consulted. */
 #if ABI_COMPATIBILITY_VERSION >= 405
     if (tsp->is_noexcept) {
       /* The exception specification specifies either "noexcept" or
