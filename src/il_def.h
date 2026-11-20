@@ -12588,6 +12588,11 @@ typedef struct a_routine {
 			   this is an assertion by the programmer that the
 			   routine will not throw an exception (the front end
 			   does not check that assertion). */
+  a_bit_field	eh_frame_elided:1;
+			/* TRUE for a noexcept routine whose body cannot throw, so that its EH
+			   stack frame was not pushed (add_eh_function_prologue). Such a routine
+			   keeps the call of its destructor where the frame would have made the
+			   body count as having an effect (lower_il.c): the calls are unchanged. */
   a_bit_field	is_in_class_specialization:1;
 			/* TRUE if this is a specialized template instance
 			   and the specialization was declared within the

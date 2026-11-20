@@ -22532,7 +22532,9 @@ Do IL lowering of the indicated scope and everything under it.
     /* Now that the scope has been lowered, we know everything we're ever
        going to know about this routine.  If the body of the function has
        no effect, note that now (before the memory region is written out). */
-    routine->has_no_effect = ctor_or_dtor_body_has_no_effect(scope);
+    /* A routine whose EH frame was elided keeps its calls: with the frame it had a body with an effect (see
+       eh_frame_elided). */
+    routine->has_no_effect = routine->eh_frame_elided ? FALSE : ctor_or_dtor_body_has_no_effect(scope);
   }  /* if */
 #endif /* LOWERING_REMOVES_UNNEEDED_CONSTRUCTIONS_AND_DESTRUCTIONS */
   innermost_function_scope = saved_innermost_function_scope;
