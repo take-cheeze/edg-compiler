@@ -4952,13 +4952,17 @@ statement if necessary.
   /* See if the routine has a throw specification. */
   tsp = routine_type->variant.routine.extra_info->exception_specification;
   check_assertion(tsp == NULL || !tsp->indeterminate);
+  if (!building_runtime && tsp != NULL && !tsp->throw_any && tsp->is_noexcept &&
+      !statement_list_might_throw(scope->assoc_block->variant.block.statements)) {
+    /* A noexcept routine whose body cannot throw gets no EH stack frame: an
+       exception cannot leave it, so the frame would never be consulted. */
+    routine->eh_frame_elided = TRUE;
+  }  /* if */
   if (building_runtime) {
     /* In the case where we're building the runtime library, don't take
        action on the exception specification (if any).  That's to prevent
        problems when the runtime library explicitly calls std::terminate(). */
-  } else if (tsp != NULL && !tsp->throw_any &&
-             !(tsp->is_noexcept && !statement_list_might_throw(
-                                 scope->assoc_block->variant.block.statements))) {
+  } else if (tsp != NULL && !tsp->throw_any && !routine->eh_frame_elided) {
     /* The routine has an exception specification that the runtime library
        needs to know about.  (A null pointer means the function can throw
        anything.)  The noexcept(false) case is treated similarly (as is
