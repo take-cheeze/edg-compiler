@@ -5044,6 +5044,18 @@ for exception-handling constructs.
 #endif /* DO_FULL_PORTABLE_EH_LOWERING */
 
 /*
+nfcxx: when this switch is TRUE (with GENERATE_EH_TABLES and the IA-64 ABI), the
+typeinfo variable of a catch clause and of a thrown object of pointer type is
+the IA-64 ABI's typeinfo of the pointer type itself (__pointer_type_info), not
+that of the pointed-to type: the back end then writes exception tables that the
+Itanium C++ ABI's personality routine (libstdc++'s) reads.  EDG's own runtime
+describes a pointer by a flag and the underlying type's typeinfo instead.
+*/
+#ifndef NFCXX_ITANIUM_EH_TYPEINFO
+#define NFCXX_ITANIUM_EH_TYPEINFO FALSE
+#endif /* ifndef NFCXX_ITANIUM_EH_TYPEINFO */
+
+/*
 When this switch is TRUE, the object lifetime information in the IL
 will be left around by IL lowering, but only when exceptions are
 enabled.

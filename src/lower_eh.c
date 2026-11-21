@@ -2842,6 +2842,30 @@ type is indicated in the returned value of *flags_value and
 }  /* typeinfo_var_for_type */
 
 
+#if NFCXX_ITANIUM_EH_TYPEINFO && GENERATE_EH_TABLES && !DO_FULL_PORTABLE_EH_LOWERING
+static a_variable_ptr itanium_eh_typeinfo_var(a_type_ptr type,
+                                              a_variable_ptr eh_var)
+/*
+Return the typeinfo variable the IA-64 ABI's personality routine matches for
+a catch clause or a thrown object of the indicated type: the typeinfo of the
+type without a reference and without top-level cv-qualifiers.  This differs
+from eh_var (the variable typeinfo_var_for_type returned) only for a pointer,
+for which the latter is the pointed-to type's.  A pointer to member keeps
+eh_var.
+*/
+{
+  a_type_ptr t = skip_typerefs(type);
+  if (is_reference_type(t)) t = skip_typerefs(type_pointed_to(t));
+  t = skip_typerefs(make_unqualified_type(t));
+  if (is_pointer_type(t) && !is_or_was_nullptr_type(t) &&
+      !is_ptr_to_member_type(t)) {
+    return make_typeinfo_var(t);
+  }  /* if */
+  return eh_var;
+}  /* itanium_eh_typeinfo_var */
+#endif /* NFCXX_ITANIUM_EH_TYPEINFO && ... */
+
+
 static void generate_type_typeinfo_var_if_needed(a_type_ptr type)
 /*
 Generate a typeinfo variable for the indicated type, if necessary.
@@ -5810,6 +5834,11 @@ be passed down.
       handler->typeinfo_var = typeinfo_var_for_type(handler->parameter->type,
                                                     &flags_value,
                                                     &ptr_flags_var);
+#if NFCXX_ITANIUM_EH_TYPEINFO
+      handler->typeinfo_var =
+                itanium_eh_typeinfo_var(handler->parameter->type,
+                                        handler->typeinfo_var);
+#endif /* NFCXX_ITANIUM_EH_TYPEINFO */
     }  /* if */
 #endif /* DO_FULL_PORTABLE_EH_LOWERING */
   }  /* for */
@@ -6182,6 +6211,11 @@ Lower an enk_throw expression node.
                                          &flags_value,
                                          &ptr_flags_var);
 #endif /* DO_FULL_PORTABLE_EH_LOWERING */
+#if NFCXX_ITANIUM_EH_TYPEINFO && GENERATE_EH_TABLES
+    /* The typeinfo of a thrown pointer: the back end finds it as the
+       typeinfo_var of the (unqualified) throw type. */
+    (void)itanium_eh_typeinfo_var(tsp->type, (a_variable_ptr)NULL);
+#endif /* NFCXX_ITANIUM_EH_TYPEINFO && GENERATE_EH_TABLES */
     throw_type = tsp->type;
     lower_os_type(throw_type);
     throw_type = f_skip_typerefs(throw_type);
