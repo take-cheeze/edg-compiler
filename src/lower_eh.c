@@ -6212,9 +6212,12 @@ Lower an enk_throw expression node.
                                          &ptr_flags_var);
 #endif /* DO_FULL_PORTABLE_EH_LOWERING */
 #if NFCXX_ITANIUM_EH_TYPEINFO && GENERATE_EH_TABLES
-    /* The typeinfo of a thrown pointer: the back end finds it as the
-       typeinfo_var of the (unqualified) throw type. */
-    (void)itanium_eh_typeinfo_var(tsp->type, (a_variable_ptr)NULL);
+    /* The typeinfo of the thrown type itself (a pointer's is not its
+       underlying type's, and std::nullptr_t has one only when something
+       asks for it): the back end finds it as the typeinfo_var of the
+       unqualified throw type. */
+    (void)make_typeinfo_var(
+             f_skip_typerefs(make_unqualified_type(f_skip_typerefs(tsp->type))));
 #endif /* NFCXX_ITANIUM_EH_TYPEINFO && GENERATE_EH_TABLES */
     throw_type = tsp->type;
     lower_os_type(throw_type);
@@ -6381,6 +6384,17 @@ Lower an enk_throw expression node.
     /* Put the lowered node pointer into the throw supplement. */
     tsp->expr = insert_location.variant.expr;
     tsp->dynamic_init = NULL;
+#if NFCXX_ITANIUM_EH_TYPEINFO && IA64_ABI
+    /* The runtime destroys a complete object: the destructor passed to
+       __cxa_throw is the complete object entry point, as the portable
+       scheme passes to __throw_setup_dtor (a class with virtual bases has
+       a subobject destructor that takes a VTT). */
+    if (tsp->destructor != NULL) {
+      tsp->destructor = alternate_entry_point(tsp->destructor,
+                                             (a_ctor_or_dtor_kind)cdk_complete,
+                                             /*define_now=*/FALSE);
+    }  /* if */
+#endif /* NFCXX_ITANIUM_EH_TYPEINFO && IA64_ABI */
 #endif /* !DO_FULL_PORTABLE_EH_LOWERING */
   }  /* if */
 }  /* lower_throw */
