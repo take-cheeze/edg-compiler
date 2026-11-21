@@ -4932,6 +4932,9 @@ statement if necessary.
   an_expr_node_ptr          func_frame_function_array_table;
   an_expr_node_ptr          func_frame_function_saved_region_number;
   a_boolean                 need_throw_epilogue = FALSE;
+  a_boolean                 body_nothrow = FALSE, elided_noexcept = FALSE,
+                            elided_func = FALSE;
+  a_variable_ptr            saved_region_var = NULL;
   an_eh_stack_entry_kind    eh_stack_kind = ehsek_old_try_block;
 #endif /* DO_FULL_PORTABLE_EH_LOWERING */
 
@@ -4950,17 +4953,23 @@ statement if necessary.
   /* See if the routine has a throw specification. */
   tsp = routine_type->variant.routine.extra_info->exception_specification;
   check_assertion(tsp == NULL || !tsp->indeterminate);
-  if (!building_runtime && tsp != NULL && !tsp->throw_any && tsp->is_noexcept &&
-      !statement_list_might_throw(scope->assoc_block->variant.block.statements)) {
-    /* A noexcept routine whose body cannot throw gets no EH stack frame: an
-       exception cannot leave it, so the frame would never be consulted. */
+  /* A routine whose body cannot throw has no EH stack frame to consult: an exception cannot leave it, and no cleanup
+     region of its body is entered by an exception.  A noexcept one gets no EH stack frame (elided_noexcept).  Any
+     routine with destructions and no try block gets no function frame (elided_func): it saves __eh_curr_region in a
+     local and restores it at each return, as the popped frame would have. */
+  if (!building_runtime)
+    body_nothrow = !statement_list_might_throw(scope->assoc_block->variant.block.statements);
+  if (body_nothrow && tsp != NULL && !tsp->throw_any && tsp->is_noexcept)
+    elided_noexcept = TRUE;
+  if (body_nothrow && !routine->contains_try_block && has_destructions(scope->lifetime))
+    elided_func = TRUE;
+  if (elided_noexcept || elided_func)
     routine->eh_frame_elided = TRUE;
-  }  /* if */
   if (building_runtime) {
     /* In the case where we're building the runtime library, don't take
        action on the exception specification (if any).  That's to prevent
        problems when the runtime library explicitly calls std::terminate(). */
-  } else if (tsp != NULL && !tsp->throw_any && !routine->eh_frame_elided) {
+  } else if (tsp != NULL && !tsp->throw_any && !elided_noexcept) {
     /* The routine has an exception specification that the runtime library
        needs to know about.  (A null pointer means the function can throw
        anything.)  The noexcept(false) case is treated similarly (as is
@@ -5051,6 +5060,24 @@ statement if necessary.
     }  /* if */
 #endif /* GENERATE_EH_TABLES */
 #if DO_FULL_PORTABLE_EH_LOWERING
+    if (elided_func) {
+      /* No function frame: __eh_curr_region is saved in a local, reset as the frame's push does, and restored where the
+         frame would be popped (see below). */
+      /* The object address table is finished in the frame's block below; it is data, so it is finished here too. */
+      if (object_addr_table_var != NULL)
+        finish_array_var(object_addr_table_var, (a_constant_ptr)NULL);
+      saved_region_var =
+          make_lowered_temporary(integer_type(targ_region_number_int_kind));
+      (void)insert_assignment_statement(var_lvalue_expr(saved_region_var),
+                                        (an_expr_operator_kind)eok_assign,
+                                        var_rvalue_expr(make_eh_curr_region_var()),
+                                        &insert_location);
+      (void)insert_var_assignment_statement(eh_curr_region_var,
+                                            node_for_integer_constant(
+                                                 (long)null_eh_region_number,
+                                                 targ_region_number_int_kind),
+                                            &insert_location);
+    } else {
     /* Generate code to push an entry on the EH stack. */
     push_eh_stack_frame(ehsek_function, &func_frame, &insert_location);
     /* Put pointers to the various arrays into the stack. */
@@ -5129,6 +5156,7 @@ statement if necessary.
                                                  (long)null_eh_region_number,
                                                  targ_region_number_int_kind),
                                           &insert_location);
+    }  /* if (elided_func) */
 #else /* !DO_FULL_PORTABLE_EH_LOWERING */
     /* Non-portable schemes: generate an enk_lowered_eh_construct/
        leck_function_prologue expression node. */
@@ -5156,8 +5184,12 @@ statement if necessary.
       turn_branch_into_block(rmp->stmt, &insert_location, &rmp->stmt);
       if (need_function_epilogue) {
 #if DO_FULL_PORTABLE_EH_LOWERING
-        /* Insert code to pop the prologue pushed for the function. */
-        pop_eh_stack_frame(ehsek_function, func_frame, &insert_location);
+        /* Insert code to pop the prologue pushed for the function (or, when it was elided, restore __eh_curr_region). */
+        if (elided_func)
+          assign_to_eh_curr_region(var_rvalue_expr(saved_region_var),
+                                   &insert_location);
+        else
+          pop_eh_stack_frame(ehsek_function, func_frame, &insert_location);
 #else /* !DO_FULL_PORTABLE_EH_LOWERING */
         /* Insert an enk_lowered_eh_construct node to represent the
            function epilogue. */
