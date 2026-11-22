@@ -5058,6 +5058,32 @@ statement if necessary.
     need_throw_epilogue = TRUE;
   }  /* if */
 #endif /* DO_FULL_PORTABLE_EH_LOWERING */
+#if NFCXX_ITANIUM_EH_TYPEINFO && GENERATE_EH_TABLES && !DO_FULL_PORTABLE_EH_LOWERING
+  /* The types of a dynamic exception specification (throw(T...)): the back end
+     writes the specification's filter, whose type table names the IA-64 typeinfo
+     of each type, a pointer's own (__pointer_type_info).  Nothing else makes one
+     when no catch clause or throw of the type is in the translation unit.  (A
+     pointer to member and std::nullptr_t keep EDG's description.) */
+  { a_type_ptr rt = skip_typerefs(routine->type);
+    an_exception_specification_ptr esp =
+              rt->kind == tk_routine && rt->variant.routine.extra_info != NULL ?
+              rt->variant.routine.extra_info->exception_specification : NULL;
+    if (esp != NULL && !esp->throw_any && !esp->is_noexcept &&
+        !esp->indeterminate) {
+      an_exception_specification_type_ptr espt;
+      for (espt = esp->variant.exception_specification_type_list;
+           espt != NULL;
+           espt = espt->next) {
+        a_type_ptr t = skip_typerefs(espt->type);
+        if (is_reference_type(t)) t = skip_typerefs(type_pointed_to(t));
+        t = skip_typerefs(make_unqualified_type(t));
+        if (!is_ptr_to_member_type(t) && !is_or_was_nullptr_type(t)) {
+          (void)make_typeinfo_var(t);
+        }  /* if */
+      }  /* for */
+    }  /* if */
+  }
+#endif /* NFCXX_ITANIUM_EH_TYPEINFO && ... */
   if (has_destructions(scope->lifetime) || routine->contains_try_block) {
     /* The function contains destructible objects, or it contains try
        blocks, so it needs a prologue and epilogue. */
